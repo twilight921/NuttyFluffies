@@ -45,6 +45,30 @@ public class LevelDefinition : ScriptableObject
     [Tooltip("Overall downhill drift so momentum trends forward. Units of drop per unit of length.")]
     public float downhillBias = 0.03f;
 
+    [Header("Track Character")]
+    [Tooltip("Personality of this track. Warps the base hill waveform AND presets the feature counts below when the level is (re)generated. See TrackArchetype.")]
+    public TrackArchetype archetype = TrackArchetype.RollingHills;
+    [Tooltip("Sharp back-to-back turn pairs scattered along the run. Rewards the Squirrel (Tight Turn).")]
+    [Range(0, 8)] public int hairpinCount = 0;
+    [Range(0f, 1f)]
+    [Tooltip("How vicious each hairpin is. Higher = snappier direction change (still slope-clamped so it stays rideable).")]
+    public float hairpinSharpness = 0.5f;
+    [Tooltip("Abrupt convex launch crests that fling the train off the rail. Rewards the Owl (Airtime) and Dragon (Near Miss).")]
+    [Range(0, 8)] public int launchCount = 0;
+    [Range(0f, 1f)]
+    [Tooltip("Launch crest height / drop on the far side. Higher = more hang time.")]
+    public float launchStrength = 0.5f;
+    [Tooltip("Long, steep sustained descents that build top speed. Rewards the Fox (Speed Burst).")]
+    [Range(0, 6)] public int plungeCount = 0;
+    [Range(0f, 1f)]
+    [Tooltip("Depth and steepness of each plunge.")]
+    public float plungeSteepness = 0.5f;
+    [Tooltip("Runs of rapid-fire little bumps (washboard) that keep the wheels skipping. Rewards the Dragon (Near Miss).")]
+    [Range(0, 8)] public int washboardCount = 0;
+    [Range(0f, 1f)]
+    [Tooltip("Bump amplitude of each washboard run.")]
+    public float washboardStrength = 0.5f;
+
     [Header("Hand-tuning")]
     [Tooltip("When on, the build uses the exact knot list below instead of regenerating from the seed.")]
     public bool useBakedKnots = false;

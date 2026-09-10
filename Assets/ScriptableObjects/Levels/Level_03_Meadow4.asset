@@ -16,11 +16,11 @@ MonoBehaviour:
   worldName: Meadow
   order: 3
   seed: 1291
-  length: 103.75
+  length: 107.5
   knotSpacing: 8
   leadInLength: 10
   runOutLength: 8
-  maxHillHeight: 4
+  maxHillHeight: 3.725
   amplitudeEnvelope:
     serializedVersion: 2
     m_Curve:
@@ -54,9 +54,18 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  hillFrequency: 0.275
-  roughness: 0.17
-  downhillBias: 0.022
+  hillFrequency: 0.22
+  roughness: 0.135
+  downhillBias: 0.02
+  archetype: 2
+  hairpinCount: 0
+  hairpinSharpness: 0.5
+  launchCount: 2
+  launchStrength: 0.4
+  plungeCount: 0
+  plungeSteepness: 0.5
+  washboardCount: 0
+  washboardStrength: 0.5
   useBakedKnots: 0
   bakedKnots: []
   trackType: {fileID: 11400000, guid: 8169c1c08e15f727eba612fa3d4bb60f, type: 2}

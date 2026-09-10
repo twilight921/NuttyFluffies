@@ -5,13 +5,15 @@ using UnityEditor;
 // One-shot editor utility: generates a spread of LevelDefinition assets across
 // a few themed "worlds" with a rising difficulty curve, then (re)builds
 // LevelCatalog.asset from them in order. This is the "many unique levels"
-// button -- each level is a different seed + shape params, so no two tracks
-// are the same, and the catalog is what LevelLoader / the Garage picker read
-// at runtime.
+// button -- every level pairs a different seed + base terrain feel with its own
+// TrackArchetype and a hand-picked mix of signature features (hairpins, launch
+// crests, plunges, washboards). No two tracks play the same, and because each
+// feature type scores for a different premium creature, each level has a clear
+// "bring this passenger" hook.
 //
 // Idempotent: each (world, slot) maps to a fixed asset path, reused and
 // re-stamped in place rather than duplicated. Safe to re-run after tweaking
-// the bands below; hand-tuned levels (useBakedKnots) keep their baked knots
+// the tables below; hand-tuned levels (useBakedKnots) keep their baked knots
 // but their metadata/params are refreshed -- duplicate + rename a level you
 // want to protect from re-runs.
 public static class GenerateLevelBatch
@@ -24,56 +26,100 @@ public static class GenerateLevelBatch
 
     private const string BackgroundFolder = "Assets/Art/Background";
 
+    // Per-level personality. `world` supplies the base terrain bands (size,
+    // hill height/frequency, tint); this supplies everything that makes the
+    // slot feel distinct from its neighbours.
+    private struct Slot
+    {
+        public TrackArchetype archetype;
+        public bool steel;               // false = Wood
+        public int hairpins;   public float hairpinSharpness;
+        public int launches;   public float launchStrength;
+        public int plunges;    public float plungeSteepness;
+        public int washboards; public float washboardStrength;
+    }
+
     private struct World
     {
         public string name;
         public Color tint;
         public string backgroundSprite;   // file under BackgroundFolder, e.g. "bg_canyon.png"
-        public Vector2 hillHeight;     // easy -> hard
+        public Vector2 hillHeight;      // easy -> hard
         public Vector2 hillFrequency;
         public Vector2 roughness;
         public Vector2 length;
+        public float knotSpacing;
         public float downhillBias;
-        public string[] trackTypeBySlot; // per-slot "Wood"/"Steel", length LevelsPerWorld
+        public Slot[] slots;             // length LevelsPerWorld
     }
 
     private static readonly World[] Worlds =
     {
+        // Meadow -- calm intro. Each level teaches ONE signature feature so the
+        // player meets the whole creature roster one at a time.
         new World
         {
             name = "Meadow",
             tint = new Color(0.56f, 0.78f, 0.55f),
             backgroundSprite = "sky_bg.png",
-            hillHeight = new Vector2(2.5f, 4.5f),
-            hillFrequency = new Vector2(0.20f, 0.30f),
-            roughness = new Vector2(0.08f, 0.20f),
-            length = new Vector2(85f, 110f),
-            downhillBias = 0.022f,
-            trackTypeBySlot = new[] { "Wood", "Wood", "Wood", "Wood", "Wood" },
+            hillHeight = new Vector2(2.3f, 4.2f),
+            hillFrequency = new Vector2(0.16f, 0.24f),
+            roughness = new Vector2(0.06f, 0.16f),
+            length = new Vector2(85f, 115f),
+            knotSpacing = 8f,
+            downhillBias = 0.020f,
+            slots = new[]
+            {
+                new Slot { archetype = TrackArchetype.RollingHills, steel = false },
+                new Slot { archetype = TrackArchetype.Whoops,       steel = false, washboards = 2, washboardStrength = 0.32f },
+                new Slot { archetype = TrackArchetype.Switchback,   steel = false, hairpins = 2, hairpinSharpness = 0.42f },
+                new Slot { archetype = TrackArchetype.Airborne,     steel = false, launches = 2, launchStrength = 0.40f },
+                new Slot { archetype = TrackArchetype.Plunges,      steel = false, plunges = 1, plungeSteepness = 0.48f },
+            },
         },
+        // Canyon -- levels now combine two mechanics and the Steel/Wood split
+        // starts to matter (Steel is faster -> bigger air, longer bursts).
         new World
         {
             name = "Canyon",
             tint = new Color(0.85f, 0.6f, 0.4f),
             backgroundSprite = "bg_canyon.png",
-            hillHeight = new Vector2(4.5f, 7.0f),
-            hillFrequency = new Vector2(0.28f, 0.40f),
-            roughness = new Vector2(0.20f, 0.38f),
-            length = new Vector2(110f, 140f),
-            downhillBias = 0.032f,
-            trackTypeBySlot = new[] { "Wood", "Steel", "Wood", "Steel", "Steel" },
+            hillHeight = new Vector2(4.2f, 6.8f),
+            hillFrequency = new Vector2(0.24f, 0.38f),
+            roughness = new Vector2(0.18f, 0.34f),
+            length = new Vector2(115f, 145f),
+            knotSpacing = 7f,
+            downhillBias = 0.030f,
+            slots = new[]
+            {
+                new Slot { archetype = TrackArchetype.Switchback, steel = false, hairpins = 3, hairpinSharpness = 0.55f, washboards = 1, washboardStrength = 0.30f },
+                new Slot { archetype = TrackArchetype.Airborne,   steel = true,  launches = 3, launchStrength = 0.55f },
+                new Slot { archetype = TrackArchetype.Plunges,    steel = false, plunges = 2, plungeSteepness = 0.60f, launches = 1, launchStrength = 0.45f },
+                new Slot { archetype = TrackArchetype.Whoops,     steel = true,  washboards = 4, washboardStrength = 0.50f, launches = 1, launchStrength = 0.45f },
+                new Slot { archetype = TrackArchetype.Mixed,      steel = true,  hairpins = 2, hairpinSharpness = 0.55f, launches = 2, launchStrength = 0.55f, plunges = 1, plungeSteepness = 0.55f, washboards = 1, washboardStrength = 0.40f },
+            },
         },
+        // Peaks -- wild finale. Steel throughout, features cranked, the last
+        // level throws the entire toolkit at the player at once.
         new World
         {
             name = "Peaks",
             tint = new Color(0.62f, 0.74f, 0.9f),
             backgroundSprite = "bg_peaks.png",
             hillHeight = new Vector2(6.5f, 10f),
-            hillFrequency = new Vector2(0.36f, 0.52f),
-            roughness = new Vector2(0.35f, 0.55f),
-            length = new Vector2(135f, 170f),
-            downhillBias = 0.045f,
-            trackTypeBySlot = new[] { "Steel", "Steel", "Steel", "Steel", "Steel" },
+            hillFrequency = new Vector2(0.34f, 0.52f),
+            roughness = new Vector2(0.32f, 0.55f),
+            length = new Vector2(135f, 175f),
+            knotSpacing = 6.5f,
+            downhillBias = 0.044f,
+            slots = new[]
+            {
+                new Slot { archetype = TrackArchetype.Airborne,   steel = true, launches = 4, launchStrength = 0.72f, washboards = 1, washboardStrength = 0.40f },
+                new Slot { archetype = TrackArchetype.Plunges,    steel = true, plunges = 3, plungeSteepness = 0.75f, launches = 1, launchStrength = 0.50f },
+                new Slot { archetype = TrackArchetype.Switchback, steel = true, hairpins = 5, hairpinSharpness = 0.80f, washboards = 1, washboardStrength = 0.40f },
+                new Slot { archetype = TrackArchetype.Whoops,     steel = true, washboards = 6, washboardStrength = 0.65f, launches = 2, launchStrength = 0.60f, hairpins = 1, hairpinSharpness = 0.50f },
+                new Slot { archetype = TrackArchetype.Mixed,      steel = true, hairpins = 3, hairpinSharpness = 0.72f, launches = 3, launchStrength = 0.72f, plunges = 2, plungeSteepness = 0.72f, washboards = 2, washboardStrength = 0.60f },
+            },
         },
     };
 
@@ -95,6 +141,7 @@ public static class GenerateLevelBatch
             for (int slot = 0; slot < LevelsPerWorld; slot++, globalIndex++)
             {
                 float d = LevelsPerWorld == 1 ? 0f : (float)slot / (LevelsPerWorld - 1); // difficulty 0..1
+                Slot profile = world.slots[Mathf.Clamp(slot, 0, world.slots.Length - 1)];
 
                 string safeName = $"{world.name}{slot + 1}";
                 string path = $"{LevelsFolder}/Level_{globalIndex:00}_{safeName}.asset";
@@ -109,7 +156,7 @@ public static class GenerateLevelBatch
                 def.seed = 1000 + globalIndex * 97;
 
                 def.length = Mathf.Lerp(world.length.x, world.length.y, d);
-                def.knotSpacing = 8f;
+                def.knotSpacing = world.knotSpacing;
                 def.leadInLength = 10f;
                 def.runOutLength = 8f;
                 def.maxHillHeight = Mathf.Lerp(world.hillHeight.x, world.hillHeight.y, d);
@@ -118,12 +165,21 @@ public static class GenerateLevelBatch
                 def.downhillBias = world.downhillBias;
                 def.amplitudeEnvelope = BuildEnvelope(d);
 
+                def.archetype = profile.archetype;
+                def.hairpinCount = profile.hairpins;
+                def.hairpinSharpness = profile.hairpinSharpness > 0f ? profile.hairpinSharpness : 0.5f;
+                def.launchCount = profile.launches;
+                def.launchStrength = profile.launchStrength > 0f ? profile.launchStrength : 0.5f;
+                def.plungeCount = profile.plunges;
+                def.plungeSteepness = profile.plungeSteepness > 0f ? profile.plungeSteepness : 0.5f;
+                def.washboardCount = profile.washboards;
+                def.washboardStrength = profile.washboardStrength > 0f ? profile.washboardStrength : 0.5f;
+
                 // Only stamp shape params over a hand-tuned level -- don't wipe its baked knots.
                 if (!def.useBakedKnots)
                     def.bakedKnots = new List<Vector3>();
 
-                string wanted = world.trackTypeBySlot[Mathf.Clamp(slot, 0, world.trackTypeBySlot.Length - 1)];
-                def.trackType = wanted == "Steel" ? steel : wood;
+                def.trackType = profile.steel ? steel : wood;
 
                 def.heartCount = Mathf.RoundToInt(Mathf.Lerp(6f, 12f, d));
                 def.coinCount = Mathf.RoundToInt(Mathf.Lerp(14f, 24f, d));
