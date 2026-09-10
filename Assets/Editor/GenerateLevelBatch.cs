@@ -24,6 +24,8 @@ public static class GenerateLevelBatch
 
     private const int LevelsPerWorld = 5;
 
+    private const string BackgroundFolder = "Assets/Art/Background";
+
     // Per-level personality. `world` supplies the base terrain bands (size,
     // hill height/frequency, tint); this supplies everything that makes the
     // slot feel distinct from its neighbours.
@@ -41,6 +43,7 @@ public static class GenerateLevelBatch
     {
         public string name;
         public Color tint;
+        public string backgroundSprite;   // file under BackgroundFolder, e.g. "bg_canyon.png"
         public Vector2 hillHeight;      // easy -> hard
         public Vector2 hillFrequency;
         public Vector2 roughness;
@@ -58,6 +61,7 @@ public static class GenerateLevelBatch
         {
             name = "Meadow",
             tint = new Color(0.56f, 0.78f, 0.55f),
+            backgroundSprite = "sky_bg.png",
             hillHeight = new Vector2(2.3f, 4.2f),
             hillFrequency = new Vector2(0.16f, 0.24f),
             roughness = new Vector2(0.06f, 0.16f),
@@ -79,6 +83,7 @@ public static class GenerateLevelBatch
         {
             name = "Canyon",
             tint = new Color(0.85f, 0.6f, 0.4f),
+            backgroundSprite = "bg_canyon.png",
             hillHeight = new Vector2(4.2f, 6.8f),
             hillFrequency = new Vector2(0.24f, 0.38f),
             roughness = new Vector2(0.18f, 0.34f),
@@ -100,6 +105,7 @@ public static class GenerateLevelBatch
         {
             name = "Peaks",
             tint = new Color(0.62f, 0.74f, 0.9f),
+            backgroundSprite = "bg_peaks.png",
             hillHeight = new Vector2(6.5f, 10f),
             hillFrequency = new Vector2(0.34f, 0.52f),
             roughness = new Vector2(0.32f, 0.55f),
@@ -182,6 +188,15 @@ public static class GenerateLevelBatch
                 def.coinOffset = 0.55f;
 
                 def.backgroundTint = world.tint;
+
+                if (!string.IsNullOrEmpty(world.backgroundSprite))
+                {
+                    string spritePath = $"{BackgroundFolder}/{world.backgroundSprite}";
+                    var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(spritePath);
+                    if (sprite != null) def.backgroundSprite = sprite;
+                    else Debug.LogWarning($"[GenerateLevelBatch] Background sprite not found at {spritePath} "
+                        + $"-- run 'NuttyFluffies/Setup Biome Backgrounds' to (re)generate the biome backdrops.");
+                }
 
                 if (isNew) AssetDatabase.CreateAsset(def, path);
                 else EditorUtility.SetDirty(def);
