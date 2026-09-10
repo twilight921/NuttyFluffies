@@ -65,4 +65,5 @@ MonoBehaviour:
   heartMinOffset: 1.2
   heartMaxOffset: 2.5
   coinOffset: 0.55
+  backgroundSprite: {fileID: 21300000, guid: a2b00d9f7e3a962a6bcdd8196afbbb75, type: 3}
   backgroundTint: {r: 0.56, g: 0.78, b: 0.55, a: 1}
