@@ -64,7 +64,10 @@ public class LevelDefinition : ScriptableObject
     [Tooltip("How far Coins sit off the easy line.")]
     public float coinOffset = 0.55f;
 
-    [Header("Theme (placeholder -- no art yet)")]
-    [Tooltip("Flat camera background tint for this level / world.")]
+    [Header("Theme")]
+    [Tooltip("Parallax backdrop for this level / world (the scene's 'Background' SpriteRenderer). "
+        + "Leave empty to keep whatever sprite the scene already has.")]
+    public Sprite backgroundSprite;
+    [Tooltip("Flat camera background tint for this level / world (shows around the edges of the backdrop sprite).")]
     public Color backgroundTint = new Color(0.55f, 0.74f, 0.92f);
 }

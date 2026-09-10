@@ -75,6 +75,17 @@ public static class LevelBuilder
         Camera cam = Camera.main;
         if (cam != null) cam.backgroundColor = def.backgroundTint;
 
+        if (def.backgroundSprite != null)
+        {
+            var backdrop = GameObject.Find("Background")?.GetComponent<SpriteRenderer>();
+            if (backdrop != null)
+            {
+                Undo.RecordObject(backdrop, "Build Level");
+                backdrop.sprite = def.backgroundSprite;
+                EditorUtility.SetDirty(backdrop);
+            }
+        }
+
         EditorSceneManager.MarkSceneDirty(trackGO.scene);
         Debug.Log($"[LevelBuilder] Built '{def.displayName}' -- {knots.Count} knots, track type "
             + $"{(def.trackType != null ? def.trackType.displayName : "none")}"

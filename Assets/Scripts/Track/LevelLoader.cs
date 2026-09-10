@@ -26,6 +26,8 @@ public class LevelLoader : MonoBehaviour
     [SerializeField] private EdgeCollider2D trackCollider;     // CoasterLineRender
     [SerializeField] private LineRenderer trackLine;           // CoasterLineRender (the visible rail)
     [SerializeField] private TrackTypeApplier trackTypeApplier;
+    [Tooltip("The scene's parallax backdrop. Optional -- falls back to a GameObject named 'Background'.")]
+    [SerializeField] private SpriteRenderer backgroundRenderer;
     [SerializeField] private RunEndTrigger runEndTrigger;
     [SerializeField] private Pickup heartPrefab;
     [SerializeField] private Pickup coinPrefab;
@@ -188,5 +190,15 @@ public class LevelLoader : MonoBehaviour
     {
         Camera cam = Camera.main;
         if (cam != null) cam.backgroundColor = level.backgroundTint;
+
+        if (level.backgroundSprite == null) return;
+
+        SpriteRenderer backdrop = backgroundRenderer;
+        if (backdrop == null)
+        {
+            GameObject go = GameObject.Find("Background");
+            if (go != null) backdrop = go.GetComponent<SpriteRenderer>();
+        }
+        if (backdrop != null) backdrop.sprite = level.backgroundSprite;
     }
 }
