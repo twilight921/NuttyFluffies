@@ -12,10 +12,13 @@ using System.Linq;
 // Idempotent: cleans up any previous run's duplicates/joints before rebuilding.
 //
 // Also configures the trailing carts' CartTintReceiver (so TrackTypeApplier
-// can tint them) and turns a few designated trailing carts into PowerUpCarts
-// (rocket / jump-jet / magnet), wiring each to the shared PowerUpInputBroker
-// on InputManager. Promoted here from an ephemeral scratch script now that
-// it's load-bearing for the power-up cart configuration too.
+// can tint them) and turns ONE designated trailing cart into a PowerUpCart,
+// wiring it to the shared PowerUpInputBroker on InputManager. The train
+// carries a single special cart; which ability it actually runs is chosen in
+// the Garage and applied at scene load by PowerUpLoadoutApplier -- the type
+// baked here (Rocket) is just a working default for a Garage-skipped run.
+// Promoted here from an ephemeral scratch script now that it's load-bearing
+// for the power-up cart configuration too.
 public static class BuildCoasterTrain
 {
     private const int TrainSize = 6;
@@ -32,32 +35,21 @@ public static class BuildCoasterTrain
     // tighten if it still looks floppy.
     private const float CouplerAngleLimitDegrees = 15f;
 
-    // The lead cart's original hand-placed transform, so reruns are idempotent.
-    private static readonly Vector3 OriginalLeadPosition = new Vector3(-8.46f, 0f, 0f);
-    private static readonly Quaternion OriginalLeadRotation = Quaternion.Euler(0f, 0f, 353.660248f);
-
     // The lead cart's swipe-push tuning as authored for a single, solo cart
     // (read from the scene before this script ever touched it). Kept as a fixed
     // base -- rather than an incremental multiply -- so reruns stay idempotent.
     private const float BaseSwipeSensitivity = 30f;
     private const float BaseMaxSwipeForce = 50000f;
 
-    // Which trailing cart slots (0-based, so index 1 == "Cart (2)") become
-    // PowerUpCarts, and which ability each carries. Placeholder tint colors
-    // stand in for real art (red/blue/purple) and are applied directly here,
-    // bypassing TrackTypeApplier's tint pass so track color doesn't overwrite them.
+    // Which trailing cart slot (0-based, so index 1 == "Cart (2)") becomes the
+    // single PowerUpCart, and the ability baked onto it as a default. The
+    // player's real choice is applied at runtime by PowerUpLoadoutApplier from
+    // GarageSave; every other slot is a plain passenger cart. The placeholder
+    // identity tint (PowerUpCart.TintColors) is applied directly here,
+    // bypassing TrackTypeApplier's tint pass so track color doesn't overwrite it.
     private static readonly Dictionary<int, PowerUpType> PowerUpSlots = new Dictionary<int, PowerUpType>
     {
         { 1, PowerUpType.Rocket },  // Cart (2)
-        { 2, PowerUpType.JumpJet }, // Cart (3)
-        { 3, PowerUpType.Magnet },  // Cart (4)
-    };
-
-    private static readonly Dictionary<PowerUpType, Color> PowerUpTintColors = new Dictionary<PowerUpType, Color>
-    {
-        { PowerUpType.Rocket, new Color(0.85f, 0.15f, 0.1f) },
-        { PowerUpType.JumpJet, new Color(0.15f, 0.4f, 0.9f) },
-        { PowerUpType.Magnet, new Color(0.55f, 0.15f, 0.75f) },
     };
 
     // Set of cart root GameObjects that are power-up carts once built, so
@@ -85,7 +77,6 @@ public static class BuildCoasterTrain
         }
         var staleJoint = leadGO.GetComponent<HingeJoint2D>();
         if (staleJoint != null) Object.DestroyImmediate(staleJoint);
-        leadGO.transform.SetPositionAndRotation(OriginalLeadPosition, OriginalLeadRotation);
 
         GameObject trackGO = GameObject.Find("CoasterLineRender");
         if (trackGO == null)
@@ -99,52 +90,37 @@ public static class BuildCoasterTrain
             Debug.LogError("[BuildCoasterTrain] CoasterLineRender has no SplineContainer.");
             return;
         }
+
+        // Reset the lead cart onto the spline's start point every run so
+        // placement is idempotent and adapts to whatever track shape is loaded
+        // (this was a hand-tuned constant back when there was only one track).
+        // Small t offset avoids a degenerate tangent exactly at t=0.
+        {
+            Vector3 startWorld = container.EvaluatePosition(0f);
+            Vector3 startTangent = ((Vector3)container.EvaluateTangent(0.001f)).normalized;
+            if (startTangent.sqrMagnitude < 0.0001f) startTangent = Vector3.right;
+            Vector3 startNormal = new Vector3(-startTangent.y, startTangent.x, 0f);
+            if (startNormal.y < 0f) startNormal = -startNormal;
+            float startAngle = Mathf.Atan2(startTangent.y, startTangent.x) * Mathf.Rad2Deg;
+            leadGO.transform.SetPositionAndRotation(startWorld + startNormal * 0.5f, Quaternion.Euler(0f, 0f, startAngle));
+        }
         // NOTE: SplineContainer.EvaluatePosition/EvaluateTangent already return
         // world-space values in this project's package version -- do NOT also
         // run them through transform.TransformPoint/TransformDirection, or every
         // sample gets the track's position/rotation applied twice.
 
-        // Arc-length lookup table in world space (also keeps world positions so we
-        // can brute-force the nearest sample to the cart -- SplineUtility.GetNearestPoint's
-        // default resolution isn't reliable on this long, multi-hump curve).
-        var worldPositions = new Vector3[SampleCount];
-        var tSamples = new float[SampleCount];
-        var cumDist = new float[SampleCount];
-        for (int i = 0; i < SampleCount; i++)
-        {
-            float t = (float)i / (SampleCount - 1);
-            Vector3 world = container.EvaluatePosition(t);
-            worldPositions[i] = world;
-            tSamples[i] = t;
-            cumDist[i] = i == 0 ? 0f : cumDist[i - 1] + Vector3.Distance(worldPositions[i - 1], world);
-        }
-        float totalLength = cumDist[SampleCount - 1];
-
-        float TAtDistance(float d)
-        {
-            d = Mathf.Clamp(d, 0f, totalLength);
-            int lo = 0, hi = SampleCount - 1;
-            while (lo < hi - 1)
-            {
-                int mid = (lo + hi) / 2;
-                if (cumDist[mid] < d) lo = mid; else hi = mid;
-            }
-            float segLen = cumDist[hi] - cumDist[lo];
-            float segT = segLen > 0.0001f ? (d - cumDist[lo]) / segLen : 0f;
-            return Mathf.Lerp(tSamples[lo], tSamples[hi], segT);
-        }
+        // Arc-length lookup so carts can be spaced by real distance along the
+        // curve, not the spline's non-uniform t. Shared with the runtime
+        // LevelLoader via SplineArcLengthTable.
+        var arc = new SplineArcLengthTable(container, SampleCount);
+        float totalLength = arc.TotalLength;
+        float TAtDistance(float d) => arc.TAtDistance(d);
 
         // Brute-force nearest sample to the (freshly reset) lead cart position.
-        int bestIdx = 0;
-        float bestDist = float.MaxValue;
-        for (int i = 0; i < SampleCount; i++)
-        {
-            float sampleDist = Vector3.Distance(leadGO.transform.position, worldPositions[i]);
-            if (sampleDist < bestDist) { bestDist = sampleDist; bestIdx = i; }
-        }
-        float currentT = tSamples[bestIdx];
-        float currentArcDistance = cumDist[bestIdx];
-        Vector3 currentSplineWorld = worldPositions[bestIdx];
+        int bestIdx = arc.NearestSampleIndex(leadGO.transform.position, out float bestDist);
+        float currentT = arc.TSamples[bestIdx];
+        float currentArcDistance = arc.CumulativeDistance[bestIdx];
+        Vector3 currentSplineWorld = arc.WorldPositions[bestIdx];
 
         // Preserve how far the cart currently rests off the rail (perpendicular
         // offset), so repositioned/duplicated carts sit the same way.
@@ -301,7 +277,7 @@ public static class BuildCoasterTrain
             if (body != null)
             {
                 var sr = body.GetComponent<SpriteRenderer>();
-                if (sr != null) sr.color = PowerUpTintColors[powerUpType];
+                if (sr != null && PowerUpCart.TintColors.TryGetValue(powerUpType, out var tint)) sr.color = tint;
             }
 
             LastBuiltPowerUpCarts.Add(cartGO);

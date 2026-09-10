@@ -27,6 +27,13 @@ public class TrackTypeApplier : MonoBehaviour
     // Lets a designer see the swap live in edit mode when reassigning the SO.
     private void OnValidate() => Apply();
 
+    // Runtime swap, used by LevelLoader when it builds a level's track.
+    public void SetTrackType(TrackTypeDefinition definition)
+    {
+        trackType = definition;
+        Apply();
+    }
+
     private void Apply()
     {
         if (trackType == null) return;

@@ -1,11 +1,16 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Splines;
 using Unity.Mathematics;
 
-// A special carriage in the train (rocket / jump-jet / magnet) that the
+// The train's single special carriage (rocket / jump-jet / magnet) that the
 // player activates with a single button press via PowerUpInputBroker.
-// Reusable on a cooldown, not a one-shot pickup -- these are permanent cars
+// Reusable on a cooldown, not a one-shot pickup -- this is a permanent car
 // built into the train, not something collected and consumed.
+//
+// Which ability it carries is chosen in the Garage and applied at coaster-
+// scene load by PowerUpLoadoutApplier via SetPowerUp(); BuildCoasterTrain
+// only bakes a default (Rocket) so the cart works if the Garage is skipped.
 //
 // All effects are real Rigidbody2D forces/impulses applied to this cart's own
 // body; the existing HingeJoint2D chain already propagates a push from any
@@ -40,7 +45,31 @@ public class PowerUpCart : MonoBehaviour
     private float _rocketTimeRemaining;
     private float _magnetTimeRemaining;
 
+    // Placeholder identity tint per ability (no real art yet). Shared source of
+    // truth: BuildCoasterTrain bakes it at build time, PowerUpLoadoutApplier
+    // re-applies it whenever the Garage choice changes the type at runtime.
+    public static readonly IReadOnlyDictionary<PowerUpType, Color> TintColors = new Dictionary<PowerUpType, Color>
+    {
+        { PowerUpType.Rocket, new Color(0.85f, 0.15f, 0.1f) },
+        { PowerUpType.JumpJet, new Color(0.15f, 0.4f, 0.9f) },
+        { PowerUpType.Magnet, new Color(0.55f, 0.15f, 0.75f) },
+    };
+
     private void Awake() => _rb = GetComponent<Rigidbody2D>();
+
+    // Runtime loadout swap: PowerUpLoadoutApplier calls this at scene load with
+    // the ability chosen in the Garage. The track spline is only needed for the
+    // Magnet type -- pass it whenever it's known, ignored otherwise. Any
+    // in-flight effect and the cooldown are cleared so the new ability starts
+    // clean.
+    public void SetPowerUp(PowerUpType type, SplineContainer track = null)
+    {
+        powerUpType = type;
+        if (track != null) trackSpline = track;
+        _rocketTimeRemaining = 0f;
+        _magnetTimeRemaining = 0f;
+        _cooldownRemaining = 0f;
+    }
 
     private void OnEnable()
     {

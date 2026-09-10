@@ -15,5 +15,5 @@ MonoBehaviour:
   displayName: Wood
   trackPhysicsMaterial: {fileID: 6200000, guid: a7e82590415675332b9556745ee92e00, type: 2}
   lineColor: {r: 0.55, g: 0.35, b: 0.17, a: 1}
-  lineMaterial: {fileID: 0}
+  lineMaterial: {fileID: 2100000, guid: ad8d5f8d0f1a3a3718906280aa425de5, type: 2}
   cartTintColor: {r: 1, g: 1, b: 1, a: 1}
