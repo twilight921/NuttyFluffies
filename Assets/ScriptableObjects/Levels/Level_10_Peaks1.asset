@@ -17,7 +17,7 @@ MonoBehaviour:
   order: 10
   seed: 1970
   length: 135
-  knotSpacing: 8
+  knotSpacing: 6.5
   leadInLength: 10
   runOutLength: 8
   maxHillHeight: 6.5
@@ -54,9 +54,18 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  hillFrequency: 0.36
-  roughness: 0.35
-  downhillBias: 0.045
+  hillFrequency: 0.34
+  roughness: 0.32
+  downhillBias: 0.044
+  archetype: 2
+  hairpinCount: 0
+  hairpinSharpness: 0.5
+  launchCount: 4
+  launchStrength: 0.72
+  plungeCount: 0
+  plungeSteepness: 0.5
+  washboardCount: 1
+  washboardStrength: 0.4
   useBakedKnots: 0
   bakedKnots: []
   trackType: {fileID: 11400000, guid: a479c4715f420bb3fb7401078ce2c688, type: 2}

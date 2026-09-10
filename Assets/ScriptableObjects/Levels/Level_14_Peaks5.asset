@@ -16,8 +16,8 @@ MonoBehaviour:
   worldName: Peaks
   order: 14
   seed: 2358
-  length: 170
-  knotSpacing: 8
+  length: 175
+  knotSpacing: 6.5
   leadInLength: 10
   runOutLength: 8
   maxHillHeight: 10
@@ -56,7 +56,16 @@ MonoBehaviour:
     m_RotationOrder: 4
   hillFrequency: 0.52
   roughness: 0.55
-  downhillBias: 0.045
+  downhillBias: 0.044
+  archetype: 5
+  hairpinCount: 3
+  hairpinSharpness: 0.72
+  launchCount: 3
+  launchStrength: 0.72
+  plungeCount: 2
+  plungeSteepness: 0.72
+  washboardCount: 2
+  washboardStrength: 0.6
   useBakedKnots: 0
   bakedKnots: []
   trackType: {fileID: 11400000, guid: a479c4715f420bb3fb7401078ce2c688, type: 2}

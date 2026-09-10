@@ -16,11 +16,11 @@ MonoBehaviour:
   worldName: Canyon
   order: 8
   seed: 1776
-  length: 132.5
-  knotSpacing: 8
+  length: 137.5
+  knotSpacing: 7
   leadInLength: 10
   runOutLength: 8
-  maxHillHeight: 6.375
+  maxHillHeight: 6.15
   amplitudeEnvelope:
     serializedVersion: 2
     m_Curve:
@@ -54,9 +54,18 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  hillFrequency: 0.37
-  roughness: 0.335
-  downhillBias: 0.032
+  hillFrequency: 0.345
+  roughness: 0.3
+  downhillBias: 0.03
+  archetype: 4
+  hairpinCount: 0
+  hairpinSharpness: 0.5
+  launchCount: 1
+  launchStrength: 0.45
+  plungeCount: 0
+  plungeSteepness: 0.5
+  washboardCount: 4
+  washboardStrength: 0.5
   useBakedKnots: 0
   bakedKnots: []
   trackType: {fileID: 11400000, guid: a479c4715f420bb3fb7401078ce2c688, type: 2}
