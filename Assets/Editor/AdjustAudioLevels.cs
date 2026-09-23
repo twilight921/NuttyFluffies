@@ -22,7 +22,7 @@ public static class AdjustAudioLevels
             + AdjustPrefab($"{PickupPrefabFolder}/Coin.prefab");
 
         int sceneSfxAdjusted = 0;
-        foreach (var sfx in Object.FindObjectsOfType<SfxOneShot>())
+        foreach (var sfx in Object.FindObjectsByType<SfxOneShot>(FindObjectsSortMode.None))
         {
             SetVolume(sfx, SfxVolume, useUndo: true);
             sceneSfxAdjusted++;

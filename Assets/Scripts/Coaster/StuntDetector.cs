@@ -97,7 +97,7 @@ public class StuntDetector : MonoBehaviour
     {
         if (_speedBurstCooldownRemaining > 0f) _speedBurstCooldownRemaining -= dt;
 
-        if (_speedBurstCooldownRemaining <= 0f && _rb.velocity.magnitude >= speedBurstThreshold)
+        if (_speedBurstCooldownRemaining <= 0f && _rb.linearVelocity.magnitude >= speedBurstThreshold)
         {
             _speedBurstCooldownRemaining = speedBurstCooldown;
             OnStunt?.Invoke(HeartActionType.SpeedBurst);

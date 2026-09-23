@@ -159,7 +159,7 @@ public static class SetupBiomeBackgrounds
 
     private static void WireSceneBackdrop()
     {
-        var loader = Object.FindObjectOfType<LevelLoader>();
+        var loader = Object.FindFirstObjectByType<LevelLoader>();
         var backdrop = GameObject.Find("Background")?.GetComponent<SpriteRenderer>();
         if (loader == null || backdrop == null) return;
 
