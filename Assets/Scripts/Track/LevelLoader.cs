@@ -42,7 +42,7 @@ public class LevelLoader : MonoBehaviour
     [Tooltip("Center-to-center distance between cars. Matches BuildCoasterTrain (0.8 body + 0.4 gap).")]
     [SerializeField] private float cartSpacing = 1.2f;
     [SerializeField] private float startMargin = 0.5f;
-    [SerializeField] private float couplerAngleLimitDegrees = 15f;
+    [SerializeField] private float couplerAngleLimitDegrees = 45f;
 
     public LevelDefinition ActiveLevel { get; private set; }
 

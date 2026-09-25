@@ -31,9 +31,10 @@ public static class BuildCoasterTrain
 
     // How far adjacent carts are allowed to rotate relative to each other beyond
     // their resting (track-following) alignment, in degrees each way. Keeps the
-    // train coupler-rigid instead of hinging freely; loosen if it fights curves,
+    // train coupler-rigid instead of hinging freely; 45 is wide enough for tight
+    // U-curves (issue #10); loosen if it still fights curves,
     // tighten if it still looks floppy.
-    private const float CouplerAngleLimitDegrees = 15f;
+    private const float CouplerAngleLimitDegrees = 45f;
 
     // The lead cart's swipe-push tuning as authored for a single, solo cart
     // (read from the scene before this script ever touched it). Kept as a fixed
