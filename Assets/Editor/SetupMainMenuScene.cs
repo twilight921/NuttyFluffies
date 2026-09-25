@@ -40,8 +40,7 @@ public static class SetupMainMenuScene
         EnsureBackground(canvas);
         EnsureTitle(canvas);
         EnsureCartDecoration(canvas);
-        Button playButton = EnsurePlayButton(canvas);
-        Button quitButton = EnsureQuitButton(canvas);
+        BuildButtonColumn(canvas, out Button playButton, out Button quitButton);
         EnsureMainMenuController(menuScene, playButton, quitButton);
 
         EditorSceneManager.MarkSceneDirty(menuScene);
@@ -50,7 +49,7 @@ public static class SetupMainMenuScene
         if (previousActive.IsValid()) EditorSceneManager.SetActiveScene(previousActive);
         EditorSceneManager.CloseScene(menuScene, true);
 
-        Debug.Log("[SetupMainMenuScene] Main Menu scene built: EventSystem, MainMenuCanvas, background, title, cart decoration, Play/Quit buttons, MainMenuController all wired. Caller's active scene left untouched.");
+        Debug.Log("[SetupMainMenuScene] Main Menu scene built: EventSystem, MainMenuCanvas, background, title, cart decoration, aligned Play/Quit button column, MainMenuController all wired. Caller's active scene left untouched.");
     }
 
     // --- Scene open/create -------------------------------------------------
@@ -150,6 +149,9 @@ public static class SetupMainMenuScene
     }
 
     // --- Title -------------------------------------------------------------
+    // Layout (1920x1080 reference): title top-centre, subtitle under it, cart
+    // in the middle, Play/Quit column pinned to the bottom. Applied every run
+    // (not just on creation) so re-running upgrades an existing scene.
 
     private static void EnsureTitle(Transform canvas)
     {
@@ -159,13 +161,6 @@ public static class SetupMainMenuScene
         if (existing == null)
         {
             go = CreateChildRect(canvas, "TitleText");
-            var rect = (RectTransform)go.transform;
-            rect.anchorMin = new Vector2(0.5f, 1f);
-            rect.anchorMax = new Vector2(0.5f, 1f);
-            rect.pivot = new Vector2(0.5f, 1f);
-            rect.anchoredPosition = new Vector2(0f, -80f);
-            rect.sizeDelta = new Vector2(1400f, 220f);
-
             label = go.AddComponent<TextMeshProUGUI>();
             var outline = go.AddComponent<Outline>();
             outline.effectColor = new Color(0.35f, 0.15f, 0.05f, 1f);
@@ -177,10 +172,13 @@ public static class SetupMainMenuScene
             label = go.GetComponent<TMP_Text>();
         }
 
+        MenuUiKit.Place(go, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -60f), new Vector2(1500f, 260f));
+
         label.alignment = TextAlignmentOptions.Center;
-        label.fontSize = 96f;
+        label.fontSize = 100f;
         label.fontStyle = FontStyles.Bold;
-        label.color = new Color(1f, 0.85f, 0.15f); // same gold as Garage's Coins/cost labels
+        MenuUiKit.AutoSize(label, 60f, 100f); // two lines must fit the 260px box
+        label.color = MenuUiKit.Gold; // same gold as Garage's Coins/cost labels
         label.text = "Nutty Fluffies\nRollercoaster";
 
         var bob = go.GetComponent<FloatBob>();
@@ -192,29 +190,18 @@ public static class SetupMainMenuScene
     private static void EnsureSubtitle(Transform canvas)
     {
         Transform existing = canvas.Find("SubtitleText");
-        GameObject go;
-        if (existing == null)
-        {
-            go = CreateChildRect(canvas, "SubtitleText");
-            var rect = (RectTransform)go.transform;
-            rect.anchorMin = new Vector2(0.5f, 1f);
-            rect.anchorMax = new Vector2(0.5f, 1f);
-            rect.pivot = new Vector2(0.5f, 1f);
-            rect.anchoredPosition = new Vector2(0f, -300f);
-            rect.sizeDelta = new Vector2(900f, 60f);
-            go.AddComponent<TextMeshProUGUI>();
-        }
-        else
-        {
-            go = existing.gameObject;
-        }
+        GameObject go = existing != null ? existing.gameObject : CreateChildRect(canvas, "SubtitleText");
+
+        MenuUiKit.Place(go, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -340f), new Vector2(1100f, 60f));
 
         var label = go.GetComponent<TextMeshProUGUI>();
+        if (label == null) label = go.AddComponent<TextMeshProUGUI>();
         label.alignment = TextAlignmentOptions.Center;
-        label.fontSize = 32f;
+        label.fontSize = 36f;
         label.fontStyle = FontStyles.Italic;
         label.color = Color.white;
-        label.text = "Tap Play to start your ride!";
+        label.raycastTarget = false;
+        label.text = "Build your fluffy train and ride!";
     }
 
     // --- Cart decoration -------------------------------------------------
@@ -227,14 +214,6 @@ public static class SetupMainMenuScene
         if (existing == null)
         {
             go = CreateChildRect(canvas, "CartDecoration");
-            var rect = (RectTransform)go.transform;
-            rect.anchorMin = new Vector2(0.5f, 0.5f);
-            rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.anchoredPosition = new Vector2(0f, 0f);
-            rect.sizeDelta = new Vector2(360f, 360f);
-            rect.localRotation = Quaternion.Euler(0f, 0f, -8f);
-
             icon = go.AddComponent<Image>();
             icon.preserveAspect = true;
             icon.raycastTarget = false;
@@ -245,6 +224,10 @@ public static class SetupMainMenuScene
             icon = go.GetComponent<Image>();
         }
 
+        // Centred in the gap between the subtitle (ends ~y=400 from top) and the button column.
+        MenuUiKit.Place(go, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -60f), new Vector2(340f, 340f));
+        go.transform.localRotation = Quaternion.Euler(0f, 0f, -8f);
+
         icon.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(CartPath);
 
         // Draw order follows sibling order: keep the cart right above the
@@ -253,78 +236,39 @@ public static class SetupMainMenuScene
 
         var bob = go.GetComponent<FloatBob>();
         if (bob == null) bob = go.AddComponent<FloatBob>();
+
+        // Half a cycle out of phase with the title so they don't move in lockstep.
+        var bobSO = new SerializedObject(bob);
+        bobSO.FindProperty("phase").floatValue = Mathf.PI;
+        bobSO.ApplyModifiedProperties();
     }
 
-    // --- Play button -------------------------------------------------------
+    // --- Play / Quit column ------------------------------------------------
+    // One VerticalLayoutGroup so both buttons share the same centre line and
+    // width (they used to be different widths at hand-placed offsets). Rebuilt
+    // every run; buttons left over at the canvas root by older builds are removed.
 
-    private static Button EnsurePlayButton(Transform canvas)
+    private static void BuildButtonColumn(Transform canvas, out Button playButton, out Button quitButton)
     {
-        Transform existing = canvas.Find("PlayButton");
-        if (existing != null) return existing.GetComponent<Button>();
+        MenuUiKit.Remove(canvas, "ButtonColumn");
+        MenuUiKit.Remove(canvas, "PlayButton");
+        MenuUiKit.Remove(canvas, "QuitButton");
 
-        GameObject go = CreateChildRect(canvas, "PlayButton");
-        var rect = (RectTransform)go.transform;
-        rect.anchorMin = new Vector2(0.5f, 0f);
-        rect.anchorMax = new Vector2(0.5f, 0f);
-        rect.pivot = new Vector2(0.5f, 0f);
-        rect.anchoredPosition = new Vector2(0f, 220f);
-        rect.sizeDelta = new Vector2(420f, 110f);
+        GameObject column = CreateChildRect(canvas, "ButtonColumn");
+        MenuUiKit.Place(column, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 70f), new Vector2(460f, 240f));
+        var layout = column.AddComponent<VerticalLayoutGroup>();
+        layout.spacing = 24f;
+        layout.childAlignment = TextAnchor.LowerCenter;
+        layout.childControlWidth = false;
+        layout.childControlHeight = false;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
 
-        var bg = go.AddComponent<Image>();
-        bg.color = new Color(0.2f, 0.75f, 0.3f); // same green as Garage's start-ride button
-        var button = go.AddComponent<Button>();
-        button.targetGraphic = bg;
+        playButton = MenuUiKit.MakeButton(column.transform, "PlayButton", "Play", MenuUiKit.Green, 52f, out GameObject playGO);
+        ((RectTransform)playGO.transform).sizeDelta = new Vector2(460f, 116f);
 
-        GameObject labelGO = CreateChildRect(go.transform, "Label");
-        var labelRect = (RectTransform)labelGO.transform;
-        labelRect.anchorMin = Vector2.zero;
-        labelRect.anchorMax = Vector2.one;
-        labelRect.offsetMin = Vector2.zero;
-        labelRect.offsetMax = Vector2.zero;
-        var label = labelGO.AddComponent<TextMeshProUGUI>();
-        label.alignment = TextAlignmentOptions.Center;
-        label.fontSize = 44f;
-        label.fontStyle = FontStyles.Bold;
-        label.color = Color.white;
-        label.text = "Play";
-
-        return button;
-    }
-
-    // --- Quit button -------------------------------------------------------
-
-    private static Button EnsureQuitButton(Transform canvas)
-    {
-        Transform existing = canvas.Find("QuitButton");
-        if (existing != null) return existing.GetComponent<Button>();
-
-        GameObject go = CreateChildRect(canvas, "QuitButton");
-        var rect = (RectTransform)go.transform;
-        rect.anchorMin = new Vector2(0.5f, 0f);
-        rect.anchorMax = new Vector2(0.5f, 0f);
-        rect.pivot = new Vector2(0.5f, 0f);
-        rect.anchoredPosition = new Vector2(0f, 90f);
-        rect.sizeDelta = new Vector2(300f, 80f);
-
-        var bg = go.AddComponent<Image>();
-        bg.color = new Color(0.85f, 0.25f, 0.2f);
-        var button = go.AddComponent<Button>();
-        button.targetGraphic = bg;
-
-        GameObject labelGO = CreateChildRect(go.transform, "Label");
-        var labelRect = (RectTransform)labelGO.transform;
-        labelRect.anchorMin = Vector2.zero;
-        labelRect.anchorMax = Vector2.one;
-        labelRect.offsetMin = Vector2.zero;
-        labelRect.offsetMax = Vector2.zero;
-        var label = labelGO.AddComponent<TextMeshProUGUI>();
-        label.alignment = TextAlignmentOptions.Center;
-        label.fontSize = 32f;
-        label.fontStyle = FontStyles.Bold;
-        label.color = Color.white;
-        label.text = "Quit";
-
-        return button;
+        quitButton = MenuUiKit.MakeButton(column.transform, "QuitButton", "Quit", MenuUiKit.Red, 34f, out GameObject quitGO);
+        ((RectTransform)quitGO.transform).sizeDelta = new Vector2(460f, 84f);
     }
 
     // --- MainMenuController -------------------------------------------------
