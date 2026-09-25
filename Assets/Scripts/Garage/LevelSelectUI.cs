@@ -18,8 +18,8 @@ public class LevelSelectUI : MonoBehaviour
 
     private void Awake()
     {
-        if (prevButton != null) prevButton.onClick.AddListener(() => Step(-1));
-        if (nextButton != null) nextButton.onClick.AddListener(() => Step(1));
+        if (prevButton != null) { prevButton.onClick.AddListener(() => Step(-1)); UIButtonFeedback.Ensure(prevButton.gameObject); }
+        if (nextButton != null) { nextButton.onClick.AddListener(() => Step(1)); UIButtonFeedback.Ensure(nextButton.gameObject); }
     }
 
     private void Start()
@@ -45,6 +45,11 @@ public class LevelSelectUI : MonoBehaviour
 
     private void Refresh()
     {
+        // Grey out the arrow that can't go any further so the ends of the list are obvious.
+        int count = catalog != null ? catalog.Count : 0;
+        if (prevButton != null) prevButton.interactable = _index > 0;
+        if (nextButton != null) nextButton.interactable = _index < count - 1;
+
         if (label == null) return;
         if (catalog == null || catalog.Count == 0)
         {

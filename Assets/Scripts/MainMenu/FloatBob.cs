@@ -9,6 +9,8 @@ public class FloatBob : MonoBehaviour
 {
     [SerializeField] private float amplitude = 12f;
     [SerializeField] private float speed = 1.5f;
+    [Tooltip("Phase offset in radians, so neighbouring bobbers don't move in lockstep.")]
+    [SerializeField] private float phase;
 
     private RectTransform _rect;
     private Vector2 _basePos;
@@ -21,7 +23,7 @@ public class FloatBob : MonoBehaviour
 
     private void Update()
     {
-        float offset = Mathf.Sin(Time.unscaledTime * speed) * amplitude;
+        float offset = Mathf.Sin(Time.unscaledTime * speed + phase) * amplitude;
         _rect.anchoredPosition = _basePos + new Vector2(0f, offset);
     }
 }

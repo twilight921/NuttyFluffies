@@ -19,6 +19,13 @@ public class MainMenuController : MonoBehaviour
     {
         playButton.onClick.AddListener(OnPlayClicked);
         quitButton.onClick.AddListener(OnQuitClicked);
+        UIButtonFeedback.Ensure(playButton.gameObject);
+        UIButtonFeedback.Ensure(quitButton.gameObject);
+
+        // Browsers and iOS have no "quit" -- hide the button rather than leave a dead control.
+#if UNITY_WEBGL || UNITY_IOS
+        quitButton.gameObject.SetActive(false);
+#endif
     }
 
     private void OnPlayClicked() => SceneManager.LoadScene(playSceneName);

@@ -1,4 +1,3 @@
-using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
@@ -9,29 +8,43 @@ using TMPro;
 
 // One-shot editor utility: builds the entire Garage (shop/loadout) scene UI --
 // TMP essentials import, EventSystem (new Input System UI module), Canvas,
-// creature card prefab, scrollable creature list, 6 fixed train slots, the
-// power-up picker (Rocket / Jump Jet / Magnet -- the train's one special
-// cart), coins label, start-ride button, and the GarageController tying it
-// all together. Must run with Garage.unity open/active. Idempotent: reuses
-// existing GameObjects/assets in place rather than duplicating.
+// sky background, top bar (Back / Coins / title / level picker), the 6 train
+// slots, the power-up picker (Rocket / Jump Jet / Magnet -- the train's one
+// special cart), the scrollable creature list, a bottom bar with a status
+// strip + Start Ride button, and the GarageController tying it all together.
+// Must run with Garage.unity open/active.
 //
-// Built directly with UnityEngine.UI/TMPro APIs in one execute_script pass
-// (rather than a sequence of individual Coplay MCP UI-tool calls) because the
-// whole thing already has to run as a single editor script for the
-// prefab-saving/SerializedObject-wiring/TMP-import/EventSystem steps the MCP
-// UI tools don't cover, and the Coplay `create_scene` tool was unreliable
-// (timed out repeatedly) earlier in this same build -- keeping scene
-// construction in plain, inspectable C# avoids depending on it further.
+// Idempotent REBUILD: every run deletes the previously-built UI elements by
+// name and recreates them with the current layout/style, so re-running after
+// a layout change upgrades an existing scene in place. The controller and the
+// level picker (SetupLevelSelectUI, invoked at the end) are re-wired each run.
+//
+// Layout (1920x1080 reference, top-anchored bands):
+//   TopBar        0..100    Back | Coins pill | "Garage" | level picker
+//   Train         108..386  header + 6 slots
+//   Power-Up      396..512  header + 3 picker cards
+//   Creatures     524..950  header + scrollable card grid
+//   BottomBar     last 120  status strip | Start Ride
 public static class SetupGarageScene
 {
     private const string CreatureRosterPath = "Assets/ScriptableObjects/Creatures/CreatureRoster.asset";
     private const string CardPrefabPath = "Assets/MyPrefabs/CreatureCard.prefab";
+    private const string SkyBgPath = "Assets/Art/Background/sky_bg.png";
 
     private static readonly string[] SlotRoleNames =
         { "Lead", "Power-Up", "Plain", "Plain", "Plain", "Plain" };
 
     private static readonly PowerUpType[] PowerUpChoices =
         { PowerUpType.Rocket, PowerUpType.JumpJet, PowerUpType.Magnet };
+
+    // Names this builder owns (removed + recreated every run).
+    private static readonly string[] OwnedElements =
+    {
+        "Background", "TopBar", "TrainHeader", "TrainSlotsPanel", "PowerUpHeader", "PowerUpPanel",
+        "CreatureHeader", "CreatureListPanel", "BottomBar",
+        // Pre-rework top-level elements, so an old scene upgrades cleanly.
+        "CoinsLabel", "StartRideButton",
+    };
 
     [MenuItem("NuttyFluffies/Setup Garage Scene")]
     public static void Execute()
@@ -40,21 +53,27 @@ public static class SetupGarageScene
         EnsureEventSystem();
 
         Transform canvas = EnsureCanvas();
+        foreach (string owned in OwnedElements) MenuUiKit.Remove(canvas, owned);
+
+        EnsureBackground(canvas);
+        BuildTopBar(canvas, out Button backButton, out TMP_Text coinsLabel);
+        TrainSlotUI[] slots = BuildTrainSection(canvas);
+        PowerUpCardUI[] powerUpCards = BuildPowerUpSection(canvas);
+        Transform listContent = BuildCreatureSection(canvas);
         CreatureCardUI cardPrefab = EnsureCreatureCardPrefab();
-        Transform listContent = EnsureCreatureListPanel(canvas);
-        TrainSlotUI[] slots = EnsureTrainSlots(canvas);
-        PowerUpCardUI[] powerUpCards = EnsurePowerUpPicker(canvas);
-        TMP_Text coinsLabel = EnsureCoinsLabel(canvas);
-        Button startButton = EnsureStartRideButton(canvas);
+        BuildBottomBar(canvas, out Button startButton, out UIStatusMessage status);
 
         var roster = AssetDatabase.LoadAssetAtPath<CreatureRoster>(CreatureRosterPath);
         if (roster == null)
             Debug.LogError($"[SetupGarageScene] Missing {CreatureRosterPath} -- run NuttyFluffies/Setup Creature Roster first.");
 
-        EnsureGarageController(roster, listContent, cardPrefab, slots, powerUpCards, coinsLabel, startButton);
+        EnsureGarageController(roster, listContent, cardPrefab, slots, powerUpCards, coinsLabel, startButton, backButton, status);
+
+        // Re-place/restyle the level picker inside the fresh top bar.
+        SetupLevelSelectUI.Execute();
 
         EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
-        Debug.Log("[SetupGarageScene] Garage scene built: EventSystem, GarageCanvas, CreatureCard prefab, creature list, 6 train slots, power-up picker (Rocket/Jump Jet/Magnet), coins label, start-ride button, GarageController all wired.");
+        Debug.Log("[SetupGarageScene] Garage scene rebuilt: background, top bar (back/coins/level picker), 6 train slots, power-up picker, creature list, status strip, start-ride button, GarageController wired. Save the scene.");
     }
 
     // --- TMP essentials -------------------------------------------------
@@ -114,230 +133,106 @@ public static class SetupGarageScene
         return go.transform;
     }
 
-    // --- Creature card prefab -------------------------------------------
+    // --- Background (same sky as the Main Menu) ---------------------------
 
-    private static CreatureCardUI EnsureCreatureCardPrefab()
+    private static void EnsureBackground(Transform canvas)
     {
-        var existing = AssetDatabase.LoadAssetAtPath<GameObject>(CardPrefabPath);
-        if (existing != null)
-        {
-            var existingComp = existing.GetComponent<CreatureCardUI>();
-            if (existingComp != null) return existingComp;
-        }
-
-        EnsureFolder("Assets/MyPrefabs");
-
-        GameObject root = new GameObject("CreatureCard", typeof(RectTransform));
-        var rootRect = (RectTransform)root.transform;
-        rootRect.sizeDelta = new Vector2(200f, 260f);
-
-        var bg = root.AddComponent<Image>();
-        bg.color = new Color(0.85f, 0.85f, 0.85f, 1f);
-        var button = root.AddComponent<Button>();
-        button.targetGraphic = bg;
-
-        // Icon
-        GameObject iconGO = CreateChildRect(root.transform, "Icon");
-        var iconRect = (RectTransform)iconGO.transform;
-        iconRect.anchorMin = new Vector2(0.5f, 1f);
-        iconRect.anchorMax = new Vector2(0.5f, 1f);
-        iconRect.pivot = new Vector2(0.5f, 1f);
-        iconRect.anchoredPosition = new Vector2(0f, -16f);
-        iconRect.sizeDelta = new Vector2(120f, 120f);
-        var icon = iconGO.AddComponent<Image>();
-        icon.preserveAspect = true;
-
-        // Name label
-        GameObject nameGO = CreateChildRect(root.transform, "NameLabel");
-        var nameRect = (RectTransform)nameGO.transform;
-        nameRect.anchorMin = new Vector2(0.5f, 1f);
-        nameRect.anchorMax = new Vector2(0.5f, 1f);
-        nameRect.pivot = new Vector2(0.5f, 1f);
-        nameRect.anchoredPosition = new Vector2(0f, -150f);
-        nameRect.sizeDelta = new Vector2(190f, 36f);
-        var nameLabel = nameGO.AddComponent<TextMeshProUGUI>();
-        nameLabel.alignment = TextAlignmentOptions.Center;
-        nameLabel.fontSize = 24f;
-        nameLabel.text = "Name";
-
-        // State label ("Owned" or cost)
-        GameObject stateGO = CreateChildRect(root.transform, "StateLabel");
-        var stateRect = (RectTransform)stateGO.transform;
-        stateRect.anchorMin = new Vector2(0.5f, 1f);
-        stateRect.anchorMax = new Vector2(0.5f, 1f);
-        stateRect.pivot = new Vector2(0.5f, 1f);
-        stateRect.anchoredPosition = new Vector2(0f, -190f);
-        stateRect.sizeDelta = new Vector2(190f, 30f);
-        var stateLabel = stateGO.AddComponent<TextMeshProUGUI>();
-        stateLabel.alignment = TextAlignmentOptions.Center;
-        stateLabel.fontSize = 20f;
-        stateLabel.color = new Color(0.9f, 0.75f, 0.1f);
-        stateLabel.text = "0";
-
-        // Selected highlight (full-card overlay, inactive by default)
-        GameObject highlightGO = CreateChildRect(root.transform, "SelectedHighlight");
-        var highlightRect = (RectTransform)highlightGO.transform;
-        highlightRect.anchorMin = Vector2.zero;
-        highlightRect.anchorMax = Vector2.one;
-        highlightRect.offsetMin = Vector2.zero;
-        highlightRect.offsetMax = Vector2.zero;
-        var highlightImage = highlightGO.AddComponent<Image>();
-        highlightImage.color = new Color(1f, 0.9f, 0.2f, 0.35f);
-        highlightGO.transform.SetSiblingIndex(0); // behind icon/labels
-        highlightGO.SetActive(false);
-
-        var cardUI = root.AddComponent<CreatureCardUI>();
-        var serialized = new SerializedObject(cardUI);
-        serialized.FindProperty("icon").objectReferenceValue = icon;
-        serialized.FindProperty("nameLabel").objectReferenceValue = nameLabel;
-        serialized.FindProperty("stateLabel").objectReferenceValue = stateLabel;
-        serialized.FindProperty("button").objectReferenceValue = button;
-        serialized.FindProperty("selectedHighlight").objectReferenceValue = highlightGO;
-        serialized.ApplyModifiedProperties();
-
-        GameObject savedPrefab = PrefabUtility.SaveAsPrefabAsset(root, CardPrefabPath);
-        Object.DestroyImmediate(root);
-
-        return savedPrefab.GetComponent<CreatureCardUI>();
+        GameObject go = MenuUiKit.Child(canvas, "Background");
+        MenuUiKit.Fill(go);
+        var bg = MenuUiKit.AddImage(go, Color.white, raycast: false);
+        bg.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(SkyBgPath);
+        bg.preserveAspect = false;
+        go.transform.SetAsFirstSibling();
     }
 
-    // --- Creature list panel (ScrollRect) --------------------------------
+    // --- Top bar: Back | Coins | title | (level picker, added by SetupLevelSelectUI)
 
-    private static Transform EnsureCreatureListPanel(Transform canvas)
+    private static void BuildTopBar(Transform canvas, out Button backButton, out TMP_Text coinsLabel)
     {
-        Transform existingContent = canvas.Find("CreatureListPanel/Viewport/Content");
-        if (existingContent != null) return existingContent;
+        GameObject bar = MenuUiKit.Child(canvas, "TopBar");
+        MenuUiKit.TopBand(bar, 0f, 100f);
+        MenuUiKit.AddImage(bar, MenuUiKit.Panel);
 
-        GameObject panel = CreateChildRect(canvas, "CreatureListPanel");
-        var panelRect = (RectTransform)panel.transform;
-        panelRect.anchorMin = new Vector2(0.03f, 0.06f);
-        panelRect.anchorMax = new Vector2(0.97f, 0.62f);
-        panelRect.offsetMin = Vector2.zero;
-        panelRect.offsetMax = Vector2.zero;
-        var panelBg = panel.AddComponent<Image>();
-        panelBg.color = new Color(0f, 0f, 0f, 0.15f);
-        var scrollRect = panel.AddComponent<ScrollRect>();
-        scrollRect.horizontal = false;
-        scrollRect.vertical = true;
+        backButton = MenuUiKit.MakeButton(bar.transform, "BackButton", "< Menu", MenuUiKit.Slate, 30f, out GameObject backGO);
+        MenuUiKit.Place(backGO, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(30f, 0f), new Vector2(170f, 64f));
 
-        GameObject viewport = CreateChildRect(panel.transform, "Viewport");
-        var viewportRect = (RectTransform)viewport.transform;
-        viewportRect.anchorMin = Vector2.zero;
-        viewportRect.anchorMax = Vector2.one;
-        viewportRect.offsetMin = Vector2.zero;
-        viewportRect.offsetMax = Vector2.zero;
-        viewport.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.01f);
-        viewport.AddComponent<RectMask2D>();
+        GameObject pill = MenuUiKit.Child(bar.transform, "CoinsPill");
+        MenuUiKit.Place(pill, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(230f, 0f), new Vector2(290f, 64f));
+        MenuUiKit.AddImage(pill, MenuUiKit.PanelDark, raycast: false);
+        GameObject coinsGO = MenuUiKit.Child(pill.transform, "CoinsLabel");
+        MenuUiKit.Fill(coinsGO, 12f, 0f, 12f, 0f);
+        coinsLabel = MenuUiKit.AddLabel(coinsGO, "Coins: 0", 36f, MenuUiKit.Gold, TextAlignmentOptions.Center, FontStyles.Bold);
 
-        GameObject content = CreateChildRect(viewport.transform, "Content");
-        var contentRect = (RectTransform)content.transform;
-        contentRect.anchorMin = new Vector2(0f, 1f);
-        contentRect.anchorMax = new Vector2(1f, 1f);
-        contentRect.pivot = new Vector2(0.5f, 1f);
-        contentRect.anchoredPosition = Vector2.zero;
-        contentRect.sizeDelta = new Vector2(0f, 0f);
+        GameObject title = MenuUiKit.Child(bar.transform, "TitleLabel");
+        MenuUiKit.Place(title, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-110f, 0f), new Vector2(420f, 64f));
+        MenuUiKit.AddLabel(title, "GARAGE", 52f, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
+    }
 
-        var grid = content.AddComponent<GridLayoutGroup>();
-        grid.cellSize = new Vector2(200f, 260f);
-        grid.spacing = new Vector2(20f, 20f);
-        grid.padding = new RectOffset(10, 10, 10, 10);
-        grid.childAlignment = TextAnchor.UpperLeft;
+    // --- Section header helper ---------------------------------------------
 
-        var fitter = content.AddComponent<ContentSizeFitter>();
-        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
-
-        scrollRect.viewport = viewportRect;
-        scrollRect.content = contentRect;
-
-        return content.transform;
+    private static void BuildHeader(Transform canvas, string name, string text, float y)
+    {
+        GameObject go = MenuUiKit.Child(canvas, name);
+        MenuUiKit.TopBand(go, y, 34f, 40f);
+        MenuUiKit.AddLabel(go, text, 26f, Color.white, TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
     }
 
     // --- 6 fixed train slots -------------------------------------------
 
-    private static TrainSlotUI[] EnsureTrainSlots(Transform canvas)
+    private static TrainSlotUI[] BuildTrainSection(Transform canvas)
     {
-        Transform panelTransform = canvas.Find("TrainSlotsPanel");
-        GameObject panel;
-        if (panelTransform == null)
-        {
-            panel = CreateChildRect(canvas, "TrainSlotsPanel");
-            var panelRect = (RectTransform)panel.transform;
-            panelRect.anchorMin = new Vector2(0.03f, 0.68f);
-            panelRect.anchorMax = new Vector2(0.97f, 0.9f);
-            panelRect.offsetMin = Vector2.zero;
-            panelRect.offsetMax = Vector2.zero;
+        BuildHeader(canvas, "TrainHeader", "YOUR TRAIN", 108f);
 
-            var layout = panel.AddComponent<HorizontalLayoutGroup>();
-            layout.spacing = 20f;
-            layout.childAlignment = TextAnchor.MiddleCenter;
-            layout.childControlWidth = false;
-            layout.childControlHeight = false;
-            layout.childForceExpandWidth = false;
-            layout.childForceExpandHeight = false;
-        }
-        else
-        {
-            panel = panelTransform.gameObject;
-        }
+        GameObject panel = MenuUiKit.Child(canvas, "TrainSlotsPanel");
+        MenuUiKit.TopBand(panel, 146f, 240f, 40f);
+        var layout = panel.AddComponent<HorizontalLayoutGroup>();
+        layout.spacing = 24f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = false;
+        layout.childControlHeight = false;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
 
         var slots = new TrainSlotUI[6];
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < slots.Length; i++)
         {
-            string slotName = $"Slot{i}";
-            Transform existingSlot = panel.transform.Find(slotName);
-            GameObject slotGO;
-            if (existingSlot == null)
-            {
-                slotGO = CreateChildRect(panel.transform, slotName);
-                var slotRect = (RectTransform)slotGO.transform;
-                slotRect.sizeDelta = new Vector2(160f, 220f);
+            GameObject slotGO = MenuUiKit.Child(panel.transform, $"Slot{i}");
+            ((RectTransform)slotGO.transform).sizeDelta = new Vector2(190f, 232f);
 
-                var bg = slotGO.AddComponent<Image>();
-                bg.color = new Color(0.7f, 0.8f, 0.9f, 1f);
-                var button = slotGO.AddComponent<Button>();
-                button.targetGraphic = bg;
+            var bg = MenuUiKit.AddImage(slotGO, MenuUiKit.Card);
+            var button = slotGO.AddComponent<Button>();
+            button.targetGraphic = bg;
+            MenuUiKit.StyleButton(button);
+            MenuUiKit.AddSelectionOutline(slotGO, 3f);
 
-                GameObject iconGO = CreateChildRect(slotGO.transform, "Icon");
-                var iconRect = (RectTransform)iconGO.transform;
-                iconRect.anchorMin = new Vector2(0.5f, 1f);
-                iconRect.anchorMax = new Vector2(0.5f, 1f);
-                iconRect.pivot = new Vector2(0.5f, 1f);
-                iconRect.anchoredPosition = new Vector2(0f, -14f);
-                iconRect.sizeDelta = new Vector2(110f, 110f);
-                var icon = iconGO.AddComponent<Image>();
-                icon.preserveAspect = true;
+            // Accent strip: gold for the lead cart, the power-up colour-ish blue for the special cart.
+            GameObject accent = MenuUiKit.Child(slotGO.transform, "RoleAccent");
+            MenuUiKit.Place(accent, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), Vector2.zero, new Vector2(0f, 8f));
+            MenuUiKit.AddImage(accent, i == 0 ? MenuUiKit.Gold : i == 1 ? new Color(0.35f, 0.6f, 1f) : new Color(0.7f, 0.72f, 0.78f), raycast: false);
 
-                GameObject roleGO = CreateChildRect(slotGO.transform, "RoleLabel");
-                var roleRect = (RectTransform)roleGO.transform;
-                roleRect.anchorMin = new Vector2(0.5f, 1f);
-                roleRect.anchorMax = new Vector2(0.5f, 1f);
-                roleRect.pivot = new Vector2(0.5f, 1f);
-                roleRect.anchoredPosition = new Vector2(0f, -140f);
-                roleRect.sizeDelta = new Vector2(150f, 60f);
-                var roleLabel = roleGO.AddComponent<TextMeshProUGUI>();
-                roleLabel.alignment = TextAlignmentOptions.Center;
-                roleLabel.fontSize = 20f;
-                roleLabel.text = SlotRoleNames[i];
+            GameObject roleGO = MenuUiKit.Child(slotGO.transform, "RoleLabel");
+            MenuUiKit.Place(roleGO, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -14f), new Vector2(-16f, 32f));
+            var roleLabel = MenuUiKit.AddLabel(roleGO, $"{i + 1}. {SlotRoleNames[i]}", 24f, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
 
-                var slotUI = slotGO.AddComponent<TrainSlotUI>();
-                var serialized = new SerializedObject(slotUI);
-                serialized.FindProperty("icon").objectReferenceValue = icon;
-                serialized.FindProperty("roleLabel").objectReferenceValue = roleLabel;
-                serialized.FindProperty("button").objectReferenceValue = button;
-                serialized.ApplyModifiedProperties();
-            }
-            else
-            {
-                slotGO = existingSlot.gameObject;
-            }
+            GameObject iconGO = MenuUiKit.Child(slotGO.transform, "Icon");
+            MenuUiKit.Place(iconGO, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -54f), new Vector2(120f, 120f));
+            var icon = MenuUiKit.AddImage(iconGO, Color.white, raycast: false);
+            icon.preserveAspect = true;
 
-            // Refresh the role label on every run (not just creation) so a
-            // slot built by an earlier version keeps up with SlotRoleNames.
-            var existingRole = slotGO.transform.Find("RoleLabel")?.GetComponent<TMP_Text>();
-            if (existingRole != null) existingRole.text = SlotRoleNames[i];
+            GameObject nameGO = MenuUiKit.Child(slotGO.transform, "NameLabel");
+            MenuUiKit.Place(nameGO, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 14f), new Vector2(-16f, 36f));
+            var nameLabel = MenuUiKit.AddLabel(nameGO, "Empty", 26f, new Color(0.85f, 0.88f, 0.95f), TextAlignmentOptions.Center);
+            MenuUiKit.AutoSize(nameLabel, 16f, 26f);
 
-            slots[i] = slotGO.GetComponent<TrainSlotUI>();
+            var slotUI = slotGO.AddComponent<TrainSlotUI>();
+            var so = new SerializedObject(slotUI);
+            MenuUiKit.Wire(so, "icon", icon);
+            MenuUiKit.Wire(so, "roleLabel", roleLabel);
+            MenuUiKit.Wire(so, "button", button);
+            MenuUiKit.Wire(so, "nameLabel", nameLabel);
+            so.ApplyModifiedProperties();
+
+            slots[i] = slotUI;
         }
 
         return slots;
@@ -345,166 +240,218 @@ public static class SetupGarageScene
 
     // --- Power-up picker (the train's one special cart) -----------------
 
-    private static PowerUpCardUI[] EnsurePowerUpPicker(Transform canvas)
+    private static PowerUpCardUI[] BuildPowerUpSection(Transform canvas)
     {
-        Transform panelTransform = canvas.Find("PowerUpPanel");
-        GameObject panel;
-        if (panelTransform == null)
-        {
-            panel = CreateChildRect(canvas, "PowerUpPanel");
-            var panelRect = (RectTransform)panel.transform;
-            panelRect.anchorMin = new Vector2(0.35f, 0.905f);
-            panelRect.anchorMax = new Vector2(0.97f, 0.99f);
-            panelRect.offsetMin = Vector2.zero;
-            panelRect.offsetMax = Vector2.zero;
+        BuildHeader(canvas, "PowerUpHeader", "POWER-UP CART", 396f);
 
-            var layout = panel.AddComponent<HorizontalLayoutGroup>();
-            layout.spacing = 16f;
-            layout.childAlignment = TextAnchor.MiddleRight;
-            layout.childControlWidth = false;
-            layout.childControlHeight = false;
-            layout.childForceExpandWidth = false;
-            layout.childForceExpandHeight = false;
-        }
-        else
-        {
-            panel = panelTransform.gameObject;
-        }
+        GameObject panel = MenuUiKit.Child(canvas, "PowerUpPanel");
+        MenuUiKit.TopBand(panel, 434f, 80f, 40f);
+        var layout = panel.AddComponent<HorizontalLayoutGroup>();
+        layout.spacing = 24f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = false;
+        layout.childControlHeight = false;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
 
         var cards = new PowerUpCardUI[PowerUpChoices.Length];
         for (int i = 0; i < PowerUpChoices.Length; i++)
         {
             PowerUpType type = PowerUpChoices[i];
-            string cardName = $"PowerUp_{type}";
-            Transform existing = panel.transform.Find(cardName);
-            GameObject cardGO;
-            if (existing == null)
-            {
-                cardGO = CreateChildRect(panel.transform, cardName);
-                var cardRect = (RectTransform)cardGO.transform;
-                cardRect.sizeDelta = new Vector2(150f, 84f);
+            GameObject cardGO = MenuUiKit.Child(panel.transform, $"PowerUp_{type}");
+            ((RectTransform)cardGO.transform).sizeDelta = new Vector2(250f, 76f);
 
-                var bg = cardGO.AddComponent<Image>();
-                bg.color = new Color(0.82f, 0.82f, 0.82f, 1f);
-                var button = cardGO.AddComponent<Button>();
-                button.targetGraphic = bg;
+            var bg = MenuUiKit.AddImage(cardGO, MenuUiKit.Card);
+            var button = cardGO.AddComponent<Button>();
+            button.targetGraphic = bg;
+            MenuUiKit.StyleButton(button);
+            MenuUiKit.AddSelectionOutline(cardGO, 4f);
 
-                GameObject swatchGO = CreateChildRect(cardGO.transform, "Swatch");
-                var swatchRect = (RectTransform)swatchGO.transform;
-                swatchRect.anchorMin = new Vector2(0f, 0.5f);
-                swatchRect.anchorMax = new Vector2(0f, 0.5f);
-                swatchRect.pivot = new Vector2(0f, 0.5f);
-                swatchRect.anchoredPosition = new Vector2(12f, 0f);
-                swatchRect.sizeDelta = new Vector2(40f, 40f);
-                var swatch = swatchGO.AddComponent<Image>();
+            GameObject swatchGO = MenuUiKit.Child(cardGO.transform, "Swatch");
+            MenuUiKit.Place(swatchGO, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(16f, 0f), new Vector2(44f, 44f));
+            var swatch = MenuUiKit.AddImage(swatchGO, Color.white, raycast: false);
 
-                GameObject nameGO = CreateChildRect(cardGO.transform, "NameLabel");
-                var nameRect = (RectTransform)nameGO.transform;
-                nameRect.anchorMin = new Vector2(0f, 0f);
-                nameRect.anchorMax = new Vector2(1f, 1f);
-                nameRect.offsetMin = new Vector2(60f, 0f);
-                nameRect.offsetMax = new Vector2(-8f, 0f);
-                var nameLabel = nameGO.AddComponent<TextMeshProUGUI>();
-                nameLabel.alignment = TextAlignmentOptions.Left;
-                nameLabel.fontSize = 20f;
-                nameLabel.color = Color.black;
-                nameLabel.text = type.ToString();
+            GameObject nameGO = MenuUiKit.Child(cardGO.transform, "NameLabel");
+            MenuUiKit.Fill(nameGO, 74f, 0f, 10f, 0f);
+            var nameLabel = MenuUiKit.AddLabel(nameGO, type.ToString(), 28f, Color.white, TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
 
-                GameObject highlightGO = CreateChildRect(cardGO.transform, "SelectedHighlight");
-                var highlightRect = (RectTransform)highlightGO.transform;
-                highlightRect.anchorMin = Vector2.zero;
-                highlightRect.anchorMax = Vector2.one;
-                highlightRect.offsetMin = Vector2.zero;
-                highlightRect.offsetMax = Vector2.zero;
-                var highlightImage = highlightGO.AddComponent<Image>();
-                highlightImage.color = new Color(1f, 0.9f, 0.2f, 0.35f);
-                highlightImage.raycastTarget = false;
-                highlightGO.transform.SetSiblingIndex(0); // behind swatch/label
-                highlightGO.SetActive(false);
+            GameObject highlightGO = MenuUiKit.Child(cardGO.transform, "SelectedHighlight");
+            MenuUiKit.Fill(highlightGO);
+            MenuUiKit.AddImage(highlightGO, new Color(1f, 0.9f, 0.3f, 0.18f), raycast: false);
+            highlightGO.SetActive(false);
 
-                var cardUI = cardGO.AddComponent<PowerUpCardUI>();
-                var serialized = new SerializedObject(cardUI);
-                serialized.FindProperty("powerUp").enumValueIndex = (int)type;
-                serialized.FindProperty("swatch").objectReferenceValue = swatch;
-                serialized.FindProperty("nameLabel").objectReferenceValue = nameLabel;
-                serialized.FindProperty("button").objectReferenceValue = button;
-                serialized.FindProperty("selectedHighlight").objectReferenceValue = highlightGO;
-                serialized.ApplyModifiedProperties();
-            }
-            else
-            {
-                cardGO = existing.gameObject;
-            }
+            var cardUI = cardGO.AddComponent<PowerUpCardUI>();
+            var so = new SerializedObject(cardUI);
+            so.FindProperty("powerUp").enumValueIndex = (int)type;
+            MenuUiKit.Wire(so, "swatch", swatch);
+            MenuUiKit.Wire(so, "nameLabel", nameLabel);
+            MenuUiKit.Wire(so, "button", button);
+            MenuUiKit.Wire(so, "selectedHighlight", highlightGO);
+            so.ApplyModifiedProperties();
 
-            cards[i] = cardGO.GetComponent<PowerUpCardUI>();
+            cards[i] = cardUI;
         }
 
         return cards;
     }
 
-    // --- Coins label -----------------------------------------------------
+    // --- Creature list panel (ScrollRect) --------------------------------
 
-    private static TMP_Text EnsureCoinsLabel(Transform canvas)
+    private static Transform BuildCreatureSection(Transform canvas)
     {
-        Transform existing = canvas.Find("CoinsLabel");
-        if (existing != null) return existing.GetComponent<TMP_Text>();
+        BuildHeader(canvas, "CreatureHeader", "CREATURES", 524f);
 
-        GameObject go = CreateChildRect(canvas, "CoinsLabel");
-        var rect = (RectTransform)go.transform;
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(0f, 1f);
-        rect.pivot = new Vector2(0f, 1f);
-        rect.anchoredPosition = new Vector2(40f, -30f);
-        rect.sizeDelta = new Vector2(400f, 60f);
+        GameObject panel = MenuUiKit.Child(canvas, "CreatureListPanel");
+        // Below the header, above the 120px bottom bar (+10px gap each side).
+        MenuUiKit.Fill(panel, 40f, 130f, 40f, 566f);
+        MenuUiKit.AddImage(panel, MenuUiKit.Panel);
+        var scrollRect = panel.AddComponent<ScrollRect>();
+        scrollRect.horizontal = false;
+        scrollRect.vertical = true;
+        scrollRect.movementType = ScrollRect.MovementType.Clamped;
+        scrollRect.scrollSensitivity = 30f;
 
-        var label = go.AddComponent<TextMeshProUGUI>();
-        label.alignment = TextAlignmentOptions.Left;
-        label.fontSize = 36f;
-        label.color = new Color(0.95f, 0.8f, 0.15f);
-        label.text = "Coins: 0";
+        GameObject viewport = MenuUiKit.Child(panel.transform, "Viewport");
+        var viewportRect = MenuUiKit.Fill(viewport);
+        viewport.AddComponent<RectMask2D>();
 
-        return label;
+        GameObject content = MenuUiKit.Child(viewport.transform, "Content");
+        var contentRect = MenuUiKit.Place(content, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), Vector2.zero, Vector2.zero);
+
+        var grid = content.AddComponent<GridLayoutGroup>();
+        grid.cellSize = new Vector2(200f, 300f);
+        grid.spacing = new Vector2(18f, 18f);
+        grid.padding = new RectOffset(18, 18, 14, 14);
+        grid.childAlignment = TextAnchor.UpperCenter;
+
+        var fitter = content.AddComponent<ContentSizeFitter>();
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+
+        // Slim scrollbar on the right edge so overflow is discoverable.
+        GameObject sb = MenuUiKit.Child(panel.transform, "Scrollbar");
+        var sbRect = (RectTransform)sb.transform;
+        sbRect.anchorMin = new Vector2(1f, 0f);
+        sbRect.anchorMax = new Vector2(1f, 1f);
+        sbRect.pivot = new Vector2(1f, 0.5f);
+        sbRect.offsetMin = new Vector2(-16f, 8f);
+        sbRect.offsetMax = new Vector2(-4f, -8f);
+        var trackImage = MenuUiKit.AddImage(sb, new Color(0f, 0f, 0f, 0.3f));
+        var scrollbar = sb.AddComponent<Scrollbar>();
+        scrollbar.direction = Scrollbar.Direction.BottomToTop;
+
+        GameObject sliding = MenuUiKit.Child(sb.transform, "SlidingArea");
+        MenuUiKit.Fill(sliding);
+        GameObject handle = MenuUiKit.Child(sliding.transform, "Handle");
+        MenuUiKit.Fill(handle);
+        var handleImage = MenuUiKit.AddImage(handle, new Color(1f, 1f, 1f, 0.55f));
+        scrollbar.handleRect = (RectTransform)handle.transform;
+        scrollbar.targetGraphic = handleImage;
+
+        scrollRect.viewport = viewportRect;
+        scrollRect.content = contentRect;
+        scrollRect.verticalScrollbar = scrollbar;
+        scrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHideAndExpandViewport;
+        scrollRect.verticalScrollbarSpacing = -3f;
+
+        return content.transform;
     }
 
-    // --- Start ride button -------------------------------------------------
+    // --- Creature card prefab -------------------------------------------
+    // Rebuilt and re-saved over the existing prefab every run (GUID is
+    // preserved by SaveAsPrefabAsset), so card layout changes propagate.
 
-    private static Button EnsureStartRideButton(Transform canvas)
+    private static CreatureCardUI EnsureCreatureCardPrefab()
     {
-        Transform existing = canvas.Find("StartRideButton");
-        if (existing != null) return existing.GetComponent<Button>();
+        EnsureFolder("Assets/MyPrefabs");
 
-        GameObject go = CreateChildRect(canvas, "StartRideButton");
-        var rect = (RectTransform)go.transform;
-        rect.anchorMin = new Vector2(1f, 0f);
-        rect.anchorMax = new Vector2(1f, 0f);
-        rect.pivot = new Vector2(1f, 0f);
-        rect.anchoredPosition = new Vector2(-40f, 40f);
-        rect.sizeDelta = new Vector2(300f, 80f);
+        GameObject root = new GameObject("CreatureCard", typeof(RectTransform));
+        ((RectTransform)root.transform).sizeDelta = new Vector2(200f, 300f);
 
-        var bg = go.AddComponent<Image>();
-        bg.color = new Color(0.2f, 0.75f, 0.3f);
-        var button = go.AddComponent<Button>();
+        var bg = MenuUiKit.AddImage(root, MenuUiKit.Card);
+        var button = root.AddComponent<Button>();
         button.targetGraphic = bg;
+        MenuUiKit.StyleButton(button);
+        MenuUiKit.AddSelectionOutline(root, 4f);
 
-        GameObject labelGO = CreateChildRect(go.transform, "Label");
-        var labelRect = (RectTransform)labelGO.transform;
-        labelRect.anchorMin = Vector2.zero;
-        labelRect.anchorMax = Vector2.one;
-        labelRect.offsetMin = Vector2.zero;
-        labelRect.offsetMax = Vector2.zero;
-        var label = labelGO.AddComponent<TextMeshProUGUI>();
-        label.alignment = TextAlignmentOptions.Center;
-        label.fontSize = 28f;
-        label.color = Color.white;
-        label.text = "Start Ride";
+        // Tier strip (colour set from CreatureDefinition.tier at bind time)
+        GameObject tierBarGO = MenuUiKit.Child(root.transform, "TierBar");
+        MenuUiKit.Place(tierBarGO, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), Vector2.zero, new Vector2(0f, 10f));
+        var tierBar = MenuUiKit.AddImage(tierBarGO, Color.white, raycast: false);
 
-        return button;
+        GameObject iconGO = MenuUiKit.Child(root.transform, "Icon");
+        MenuUiKit.Place(iconGO, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -26f), new Vector2(150f, 150f));
+        var icon = MenuUiKit.AddImage(iconGO, Color.white, raycast: false);
+        icon.preserveAspect = true;
+
+        GameObject nameGO = MenuUiKit.Child(root.transform, "NameLabel");
+        MenuUiKit.Place(nameGO, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -184f), new Vector2(-16f, 36f));
+        var nameLabel = MenuUiKit.AddLabel(nameGO, "Name", 28f, Color.white, TextAlignmentOptions.Center, FontStyles.Bold);
+        MenuUiKit.AutoSize(nameLabel, 16f, 28f);
+
+        GameObject tierLabelGO = MenuUiKit.Child(root.transform, "TierLabel");
+        MenuUiKit.Place(tierLabelGO, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -222f), new Vector2(-16f, 26f));
+        var tierLabel = MenuUiKit.AddLabel(tierLabelGO, "Common", 20f, Color.white, TextAlignmentOptions.Center);
+
+        // State pill ("OWNED" / "Buy: 300")
+        GameObject pill = MenuUiKit.Child(root.transform, "StatePill");
+        MenuUiKit.Place(pill, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 12f), new Vector2(-24f, 40f));
+        MenuUiKit.AddImage(pill, MenuUiKit.PanelDark, raycast: false);
+        GameObject stateGO = MenuUiKit.Child(pill.transform, "StateLabel");
+        MenuUiKit.Fill(stateGO, 6f, 0f, 6f, 0f);
+        var stateLabel = MenuUiKit.AddLabel(stateGO, "0", 24f, MenuUiKit.Gold, TextAlignmentOptions.Center, FontStyles.Bold);
+
+        // Selected tint (full-card overlay, inactive by default); the outline
+        // on the root does the heavy lifting.
+        GameObject highlightGO = MenuUiKit.Child(root.transform, "SelectedHighlight");
+        MenuUiKit.Fill(highlightGO);
+        MenuUiKit.AddImage(highlightGO, new Color(1f, 0.9f, 0.3f, 0.14f), raycast: false);
+        highlightGO.SetActive(false);
+
+        var cardUI = root.AddComponent<CreatureCardUI>();
+        var so = new SerializedObject(cardUI);
+        MenuUiKit.Wire(so, "icon", icon);
+        MenuUiKit.Wire(so, "nameLabel", nameLabel);
+        MenuUiKit.Wire(so, "stateLabel", stateLabel);
+        MenuUiKit.Wire(so, "button", button);
+        MenuUiKit.Wire(so, "selectedHighlight", highlightGO);
+        MenuUiKit.Wire(so, "tierLabel", tierLabel);
+        MenuUiKit.Wire(so, "tierBar", tierBar);
+        so.ApplyModifiedProperties();
+
+        GameObject savedPrefab = PrefabUtility.SaveAsPrefabAsset(root, CardPrefabPath);
+        Object.DestroyImmediate(root);
+
+        return savedPrefab.GetComponent<CreatureCardUI>();
+    }
+
+    // --- Bottom bar: status strip + Start Ride -----------------------------
+
+    private static void BuildBottomBar(Transform canvas, out Button startButton, out UIStatusMessage status)
+    {
+        GameObject bar = MenuUiKit.Child(canvas, "BottomBar");
+        MenuUiKit.Place(bar, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f), Vector2.zero, new Vector2(0f, 120f));
+        MenuUiKit.AddImage(bar, MenuUiKit.Panel, raycast: false);
+
+        GameObject statusGO = MenuUiKit.Child(bar.transform, "StatusLabel");
+        MenuUiKit.Fill(statusGO, 40f, 0f, 400f, 0f);
+        var statusLabel = MenuUiKit.AddLabel(statusGO, "", 32f, Color.white, TextAlignmentOptions.MidlineLeft);
+        MenuUiKit.AutoSize(statusLabel, 20f, 32f);
+        status = statusGO.AddComponent<UIStatusMessage>();
+        var so = new SerializedObject(status);
+        MenuUiKit.Wire(so, "label", statusLabel);
+        so.FindProperty("idleText").stringValue = "Pick a creature, then tap a train cart to place it.";
+        so.ApplyModifiedProperties();
+
+        startButton = MenuUiKit.MakeButton(bar.transform, "StartRideButton", "Start Ride", MenuUiKit.Green, 40f, out GameObject startGO);
+        MenuUiKit.Place(startGO, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-40f, 0f), new Vector2(320f, 84f));
     }
 
     // --- GarageController -------------------------------------------------
 
     private static void EnsureGarageController(CreatureRoster roster, Transform listContent, CreatureCardUI cardPrefab,
-        TrainSlotUI[] slots, PowerUpCardUI[] powerUpCards, TMP_Text coinsLabel, Button startButton)
+        TrainSlotUI[] slots, PowerUpCardUI[] powerUpCards, TMP_Text coinsLabel, Button startButton,
+        Button backButton, UIStatusMessage status)
     {
         GameObject go = GameObject.Find("GarageController");
         if (go == null)
@@ -533,18 +480,14 @@ public static class SetupGarageScene
 
         serialized.FindProperty("coinsLabel").objectReferenceValue = coinsLabel;
         serialized.FindProperty("startRideButton").objectReferenceValue = startButton;
+        serialized.FindProperty("backButton").objectReferenceValue = backButton;
+        serialized.FindProperty("statusMessage").objectReferenceValue = status;
         serialized.FindProperty("coasterSceneName").stringValue = "SampleScene";
+        serialized.FindProperty("menuSceneName").stringValue = "MainMenu";
         serialized.ApplyModifiedProperties();
     }
 
     // --- Helpers -----------------------------------------------------------
-
-    private static GameObject CreateChildRect(Transform parent, string name)
-    {
-        GameObject go = new GameObject(name, typeof(RectTransform));
-        go.transform.SetParent(parent, false);
-        return go;
-    }
 
     private static void EnsureFolder(string path)
     {

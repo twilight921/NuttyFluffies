@@ -20,6 +20,8 @@ public class PowerUpCardUI : MonoBehaviour
 
     public PowerUpType PowerUp => powerUp;
 
+    private void Awake() => UIButtonFeedback.Ensure(gameObject);
+
     public void Init(System.Action<PowerUpType> onClicked)
     {
         if (swatch != null && PowerUpCart.TintColors.TryGetValue(powerUp, out var color))
@@ -32,6 +34,8 @@ public class PowerUpCardUI : MonoBehaviour
     public void SetSelected(bool selected)
     {
         if (selectedHighlight != null) selectedHighlight.SetActive(selected);
+        var outline = GetComponent<Outline>();
+        if (outline != null) outline.enabled = selected;
     }
 
     private static string DisplayName(PowerUpType type) => type switch
