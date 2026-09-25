@@ -4091,8 +4091,8 @@ HingeJoint2D:
     m_MaximumMotorForce: 10000
   m_UseLimits: 1
   m_AngleLimits:
-    m_LowerAngle: -15
-    m_UpperAngle: 15
+    m_LowerAngle: -45
+    m_UpperAngle: 45
 --- !u!114 &1180866631
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4713,8 +4713,8 @@ HingeJoint2D:
     m_MaximumMotorForce: 10000
   m_UseLimits: 1
   m_AngleLimits:
-    m_LowerAngle: -15
-    m_UpperAngle: 15
+    m_LowerAngle: -45
+    m_UpperAngle: 45
 --- !u!1 &1259628991
 GameObject:
   m_ObjectHideFlags: 0
@@ -5279,8 +5279,8 @@ HingeJoint2D:
     m_MaximumMotorForce: 10000
   m_UseLimits: 1
   m_AngleLimits:
-    m_LowerAngle: -15
-    m_UpperAngle: 15
+    m_LowerAngle: -45
+    m_UpperAngle: 45
 --- !u!114 &1458413298
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6809,7 +6809,7 @@ MonoBehaviour:
   railStandoff: 0.5
   cartSpacing: 1.2
   startMargin: 0.5
-  couplerAngleLimitDegrees: 15
+  couplerAngleLimitDegrees: 45
 --- !u!4 &1913295220
 Transform:
   m_ObjectHideFlags: 0
@@ -6871,8 +6871,8 @@ HingeJoint2D:
     m_MaximumMotorForce: 10000
   m_UseLimits: 1
   m_AngleLimits:
-    m_LowerAngle: -15
-    m_UpperAngle: 15
+    m_LowerAngle: -45
+    m_UpperAngle: 45
 --- !u!114 &1922229793
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7255,8 +7255,8 @@ HingeJoint2D:
     m_MaximumMotorForce: 10000
   m_UseLimits: 1
   m_AngleLimits:
-    m_LowerAngle: -15
-    m_UpperAngle: 15
+    m_LowerAngle: -45
+    m_UpperAngle: 45
 --- !u!114 &2060155684
 MonoBehaviour:
   m_ObjectHideFlags: 0
