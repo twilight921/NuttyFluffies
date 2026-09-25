@@ -231,7 +231,7 @@ public static class SetupMainMenuScene
             rect.anchorMin = new Vector2(0.5f, 0.5f);
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.anchoredPosition = new Vector2(0f, 60f);
+            rect.anchoredPosition = new Vector2(0f, 0f);
             rect.sizeDelta = new Vector2(360f, 360f);
             rect.localRotation = Quaternion.Euler(0f, 0f, -8f);
 
@@ -246,6 +246,10 @@ public static class SetupMainMenuScene
         }
 
         icon.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(CartPath);
+
+        // Draw order follows sibling order: keep the cart right above the
+        // Background so the title/subtitle/buttons always render on top of it.
+        go.transform.SetSiblingIndex(1);
 
         var bob = go.GetComponent<FloatBob>();
         if (bob == null) bob = go.AddComponent<FloatBob>();
