@@ -39,7 +39,7 @@ public class PowerUpLoadoutApplier : MonoBehaviour
 #if UNITY_2023_1_OR_NEWER
         return Object.FindFirstObjectByType<PowerUpCart>();
 #else
-        return Object.FindObjectOfType<PowerUpCart>();
+        return Object.FindFirstObjectByType<PowerUpCart>();
 #endif
     }
 

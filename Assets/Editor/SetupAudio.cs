@@ -56,7 +56,7 @@ public static class SetupAudio
         wired += WirePickupPrefab($"{PickupPrefabFolder}/Heart.prefab", heartClip);
         wired += WirePickupPrefab($"{PickupPrefabFolder}/Coin.prefab", coinClip);
 
-        foreach (var pickup in Object.FindObjectsOfType<Pickup>())
+        foreach (var pickup in Object.FindObjectsByType<Pickup>(FindObjectsSortMode.None))
         {
             var typeProp = new SerializedObject(pickup).FindProperty("pickupType");
             var clip = (PickupType)typeProp.enumValueIndex == PickupType.Heart ? heartClip : coinClip;
@@ -84,7 +84,7 @@ public static class SetupAudio
     private static int WireStuntDetectors(AudioClip stuntClip)
     {
         int wired = 0;
-        foreach (var detector in Object.FindObjectsOfType<StuntDetector>())
+        foreach (var detector in Object.FindObjectsByType<StuntDetector>(FindObjectsSortMode.None))
         {
             if (detector.GetComponent<StuntSfx>() == null)
                 Undo.AddComponent<StuntSfx>(detector.gameObject);

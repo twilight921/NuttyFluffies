@@ -47,7 +47,7 @@ public static class SetupResultsUI
 
     private static void EnsureEventSystem()
     {
-        if (Object.FindObjectOfType<EventSystem>() != null) return; // a parallel setup script may already own one
+        if (Object.FindFirstObjectByType<EventSystem>() != null) return; // a parallel setup script may already own one
 
         GameObject go = new GameObject("EventSystem");
         Undo.RegisterCreatedObjectUndo(go, "Create EventSystem");

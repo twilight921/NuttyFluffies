@@ -52,7 +52,7 @@ public static class SetupLevelSystem
         if (line == null)
             Debug.LogWarning("[SetupLevelSystem] CoasterLineRender has no LineRenderer -- the visible rail won't be rebaked per level.");
 
-        var runEnd = Object.FindObjectOfType<RunEndTrigger>();
+        var runEnd = Object.FindFirstObjectByType<RunEndTrigger>();
         if (runEnd == null)
             Debug.LogWarning("[SetupLevelSystem] No RunEndTrigger in scene -- LevelLoader won't re-point it (run 'NuttyFluffies/Setup Results UI' to add one).");
 
