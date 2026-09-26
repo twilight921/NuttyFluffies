@@ -28,6 +28,9 @@ public class RunEndTrigger : MonoBehaviour
     [Tooltip("Normalized spline progress (0-1) that counts as 'reached the end'. Just under 1.0 so sampling/resolution noise near the very last stretch of track can't strand a run just short of firing.")]
     [SerializeField] private float endThreshold = 0.98f;
 
+    [Tooltip("Optional end-of-level Station. When set, the run ends when the train has stopped at the station instead of when progress crosses End Threshold.")]
+    [SerializeField] private Station station;
+
     public event System.Action OnRunEnd;
 
     // Exposed read-only in case a HUD or debug view wants to show progress;
@@ -39,6 +42,41 @@ public class RunEndTrigger : MonoBehaviour
     // Runtime re-point, used by LevelLoader after it rebuilds the track spline.
     public void SetSpline(SplineContainer spline) => trackSpline = spline;
 
+    // Runtime re-point, used by LevelLoader (and the Setup Station editor tool).
+    public void SetStation(Station newStation)
+    {
+        if (_isSubscribed && station != null) station.OnTrainStopped -= HandleTrainStopped;
+        _isSubscribed = false;
+        station = newStation;
+        if (isActiveAndEnabled) Subscribe();
+    }
+
+    private bool _isSubscribed;
+
+    private void OnEnable() => Subscribe();
+
+    private void OnDisable()
+    {
+        if (_isSubscribed && station != null) station.OnTrainStopped -= HandleTrainStopped;
+        _isSubscribed = false;
+    }
+
+    private void Subscribe()
+    {
+        if (station == null || _isSubscribed) return;
+        station.OnTrainStopped += HandleTrainStopped;
+        _isSubscribed = true;
+    }
+
+    private void HandleTrainStopped() => Fire();
+
+    private void Fire()
+    {
+        if (_hasFired) return;
+        _hasFired = true;
+        OnRunEnd?.Invoke();
+    }
+
     private void FixedUpdate()
     {
         if (_hasFired || trackSpline == null) return;
@@ -46,10 +84,8 @@ public class RunEndTrigger : MonoBehaviour
         SplineUtility.GetNearestPoint(trackSpline.Spline, (float3)transform.position, out float3 _, out float t);
         Progress = t;
 
-        if (t >= endThreshold)
-        {
-            _hasFired = true;
-            OnRunEnd?.Invoke();
-        }
+        // With a placed station, the station decides when the run is over.
+        if ((station == null || !station.IsPlaced) && t >= endThreshold)
+            Fire();
     }
 }

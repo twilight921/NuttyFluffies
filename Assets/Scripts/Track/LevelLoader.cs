@@ -29,6 +29,8 @@ public class LevelLoader : MonoBehaviour
     [Tooltip("The scene's parallax backdrop. Optional -- falls back to a GameObject named 'Background'.")]
     [SerializeField] private SpriteRenderer backgroundRenderer;
     [SerializeField] private RunEndTrigger runEndTrigger;
+    [Tooltip("End-of-level station the train stops at. Optional -- without one the run ends when the lead cart nears the end of the rail.")]
+    [SerializeField] private Station station;
     [SerializeField] private Pickup heartPrefab;
     [SerializeField] private Pickup coinPrefab;
     [Tooltip("Every train car, lead first, in order.")]
@@ -63,6 +65,7 @@ public class LevelLoader : MonoBehaviour
         ActiveLevel = level;
         BuildTrack(level);
         PlaceTrain();
+        PlaceStation();
         ScatterPickups(level);
         ApplyTheme(level);
         Debug.Log($"[LevelLoader] Built level '{level.displayName}' (index {LevelSelection.Index}).");
@@ -88,6 +91,16 @@ public class LevelLoader : MonoBehaviour
 
         if (runEndTrigger != null)
             runEndTrigger.SetSpline(track);
+    }
+
+    // Snap the station to the end of the freshly built rail and hand it the
+    // train so it can brake the cars and detect the stop.
+    private void PlaceStation()
+    {
+        if (station == null) return;
+        station.Place(track, trainCarts);
+        if (runEndTrigger != null)
+            runEndTrigger.SetStation(station);
     }
 
     // Reposition every car along the freshly built spline (arc-length spaced,
